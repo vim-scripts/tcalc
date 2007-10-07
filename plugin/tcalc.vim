@@ -4,9 +4,8 @@
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
 " @Last Change: 2007-10-07.
-" @Revision:    0.1.30
-" GetLatestVimScripts: 0 1 tcalc.vim
-
+" @Revision:    0.2.38
+" GetLatestVimScripts: 2040 1 tcalc.vim
 
 if &cp || exists("loaded_tcalc") || !has('ruby')
     finish
@@ -15,7 +14,7 @@ if !exists('g:loaded_tlib') || g:loaded_tlib < 16
     echoerr 'tlib >= 0.16 is required'
     finish
 endif
-let loaded_tcalc = 1
+let loaded_tcalc = 2
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -38,6 +37,9 @@ finish
 
 A small ruby-based[*] RPN-calculator.
 
+Command:
+    :TCalc
+
 Input:
     - Numbers (anything starting with "-" or a decimal)
     - Methods (Float instance methods[1] or Math module methods[2])
@@ -48,7 +50,7 @@ Input:
         - s, swap (actually: reverse slice)
         - y, yank, copy, c
             - This command takes a register as optional argument, e.g., 
-            "y e"
+            "y.e"
     - Enter, escape => exit
 
 Every method/shortcut/command may take a count as optional argument to 
@@ -62,4 +64,16 @@ not every method is useful in the context of this plugin.
 [*] Built-in ruby support (:echo has('ruby')) is required.
 [1] http://www.ruby-doc.org/core/classes/Float.html
 [2] http://www.ruby-doc.org/core/classes/Math.html
+
+
+CHANGES:
+0.1
+- Initial release
+
+0.2
+- Arguments were not properly reverted: 12 4 / now yields 3.
+- The input will be split into tokens, i.e. you can input "1 2 + <cr>" 
+or "1<cr>2<cr>+<cr>". (Command-line completions doesn't work properly 
+though.)
+- The syntax has slightly changed: "CmdCount,Arg", eg, "y3,a"
 
