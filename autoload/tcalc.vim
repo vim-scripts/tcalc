@@ -4,7 +4,7 @@
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
 " @Last Change: 2007-10-08.
-" @Revision:    0.0.333
+" @Revision:    0.0.466
 
 if &cp || exists("loaded_tcalc_autoload")
     finish
@@ -25,6 +25,7 @@ function! tcalc#Calculator(full_screen) "{{{3
     setlocal modifiable
     setlocal foldmethod=manual
     setlocal foldcolumn=0
+    setlocal filetype=
     ruby TCalc.repl
     call s:CloseDisplay()
     echo
@@ -70,81 +71,134 @@ module TCalc
     @stack  = []
     @format = '%p'
     @cmds   = [
-        'copy', 'c', 'yank', 'y',
-        'hex', 'HEX', 'oct', 'bin', 'dec', 'print', 'float', 'format',
+        'ls',
+        'yank', 'y',
+        'let',
+        'hex', 'HEX', 'oct', 'bin', 'dec', 'print', 'inspect', 'float', 'format',
         'dup', 'd',
+        'copy', 'c',
         'pop', 'p', '.',
+        'del', 'delete',
         'rot', 'r',
         'swap', 's',
-        'group', 'g', ')',
-        'ungroup', 'u', '(',
-        'vars', 'ls',
+        'group', 'g',
+        'ungroup', 'u',
+        'if', 'ifelse',
+        'recapture',
+        'clear',
+        'debug',
+        'scope_begin', 'scope_end',
+        '#',
     ]
-    @vars = {}
+    @words   = {}
+    @word_rx = '[[:alpha:]_]+'
+    @debug   = false
+    @scope   = []
 
     module_function
+    def tokenize(string)
+        string.scan(/("(\\"|[^"])*?"|\S+)+/).map {|a,b| a}
+    end
+
+    @iqueue  = tokenize(VIM::evaluate("g:tcalc_initialize"))
+
     def repl
         loop do
-            dstack = format(@stack).join("\n")
-            VIM::evaluate(%{s:DisplayStack(split(#{dstack.inspect}, '\n'))})
-            cmdi = VIM::evaluate("input('> ', '', 'customlist,tcalc#Complete')")
-            break if cmdi.empty?
-            iqueue = cmdi.split(/\s+/)
-            while !iqueue.empty?
+            if @iqueue.empty?
+                dstack = format(@stack).join("\n")
+                VIM::evaluate(%{s:DisplayStack(split(#{dstack.inspect}, '\n'))})
+                cmdi = VIM::evaluate("input('> ', '', 'customlist,tcalc#Complete')")
+                break if cmdi.empty?
+                @iqueue = tokenize(cmdi)
+            end
+            while !@iqueue.empty?
                 begin
-                    cmd = iqueue.shift
-                    if cmd =~ /^-?\d/
+                    cmd = @iqueue.shift
+                    puts cmd if @debug
+                    if !cmd.kind_of?(String)
+                        @stack << cmd
+                    elsif cmd == '('
+                        idx   = nil
+                        depth = 0
+                        for i in 0..(@iqueue.size - 1)
+                            case @iqueue[i]
+                            when '('
+                                depth += 1
+                            when ')'
+                                if depth == 0
+                                    idx = i
+                                    break
+                                else
+                                    depth -= 1
+                                end
+                            end
+                        end
+                        if idx
+                            @stack << @iqueue[0..idx - 1]
+                            @iqueue[0..idx] = nil
+                        else
+                            VIM::command("echoerr 'Unmatched ('")
+                        end
+                    elsif cmd =~ /^-?\d/
                         @stack << eval(cmd).to_f
+                    elsif cmd =~ /^"(.*)"$/
+                        @stack << eval(cmd)
+                    elsif cmd =~ /^'(.*)$/
+                        @stack << $1
                     elsif cmd =~ /^#(\d+)?$/
                         n = 1 + ($1 || 1).to_i
                         val = @stack.delete_at(-n)
                         @stack << val if val
-                    elsif cmd =~ /^(\w+)=$/
-                        @vars[$1] = @stack.pop
+                    elsif cmd =~ /^(#@word_rx)=$/
+                        @words[$1] = [@stack.pop]
+                    elsif cmd =~ /^:(#@word_rx)$/
+                        idx = @iqueue.index(';')
+                        # @words[$1] = [%{"#{$1} scope_begin}, *@iqueue[0 .. idx - 1]] << 'scope_end'
+                        @words[$1] = @iqueue[0 .. idx - 1]
+                        @iqueue[0 .. idx] = nil
                     else
-                        cmdm = /^([^0-9[:space:],]+)(\d+)?(,(.+))?$/.match(cmd)
+                        cmdm = /^(.|#?#@word_rx)(#|\d+)?(,(.+))?$/.match(cmd)
                         cmda = cmdm[1]
-                        cmdn = (cmdm[2] || 1).to_i
+                        cmdn = cmdm[2]
                         cmdx = cmdm[4]
+                        if cmda =~ /^#(#@word_rx)$/
+                            cmda = '#'
+                            cmdw = $1
+                        else
+                            cmdw = nil
+                        end
+                        case cmdn
+                        when '#'
+                            cmdn = @stack.pop.to_i
+                        when nil, ''
+                            cmdn = 1
+                        else
+                            cmdn = cmdn.to_i
+                        end
+                        # p "DBG", cmda, cmdn, cmdx
                         cmdn.times do
-                            if Float.instance_methods.include?(cmda)
-                                args = []
-                                argn = Float.instance_method(cmda).arity
-                                for i in 0..argn
-                                    args << @stack.pop unless @stack.empty?
-                                end
-                                args.reverse!
-                                @stack += [args[0].send(cmda, *args[1..-1])].flatten
-                            elsif Float.constants.include?(cmda)
-                                @stack << Float.const_get(cmda)
-                            elsif Math.constants.include?(cmda)
-                                @stack << Math.const_get(cmda)
-                            elsif Math.methods.include?(cmda)
-                                args = []
-                                argn = Math.method(cmda).arity
-                                for i in 1..argn
-                                    args << @stack.pop unless @stack.empty?
-                                end
-                                args.reverse!
-                                @stack += [Math.send(cmda, *args)].flatten
-                            elsif @vars.has_key?(cmda)
-                                @stack << @vars[cmda]
-                            else
+                            if @cmds.include?(cmda)
                                 case cmda
-                                when 'vars', 'ls'
-                                    for key, val in @vars
-                                        puts "#{key}: #{val}"
+                                when 'debug'
+                                    @debug = cmdn.to_i != 0
+                                when 'ls'
+                                    for key, val in @words
+                                        puts "#{key}: #{val.join(' ')}"
                                     end
                                     VIM::evaluate("input('-- Press ENTER --')")
-                                when 'copy', 'c', 'yank', 'y'
+                                when 'yank', 'y'
                                     args = format(@stack[-cmdn .. -1])
                                     args = args.join("\n")
                                     VIM::command("let @#{cmdx || '*'} = #{args.inspect}")
                                     break
-                                when 'let', '='
-                                    @vars[cmdx] = @stack.pop
+                                when 'let'
+                                    @words[cmdx] = [@stack.pop]
                                 when 'unlet', 'rm'
-                                    @vars.delete(cmdx)
+                                    @words.delete(cmdx)
+                                when 'scope_begin'
+                                    @scope << @stack.pop
+                                when 'scope_end'
+                                    @scope.pop
                                 when 'hex'
                                     @format = '%x'
                                 when 'HEX'
@@ -155,14 +209,20 @@ module TCalc
                                     @format = '%016b'
                                 when 'dec'
                                     @format = '%d'
-                                when 'print'
+                                when 'print', 'inspect'
                                     @format = '%p'
                                 when 'float'
                                     @format = '%f'
                                 when 'format'
                                     @format = cmdx
+                                when 'copy', 'c'
+                                    @stack << @stack[-cmdn - 1]
+                                    break
                                 when 'dup', 'd'
                                     @stack << @stack[-1] unless @stack.empty?
+                                when 'del', 'delete'
+                                    @stack.delete_at(-cmdn - 1)
+                                    break
                                 when 'pop', 'p', '.'
                                     @stack.pop
                                 when 'rot', 'r'
@@ -174,22 +234,67 @@ module TCalc
                                     val = @stack[-n .. -1].reverse
                                     @stack[-n .. -1] = val
                                     break
-                                when 'g', 'group', ')'
+                                when 'g', 'group'
                                     acc = []
                                     cmdn.times {acc << @stack.pop}
                                     @stack << acc.reverse
                                     break
-                                when 'u', 'ungroup', '('
-                                    @stack += @stack.pop
+                                when 'u', 'ungroup'
+                                    # @iqueue.unshift(*@stack.pop)
+                                    @stack.concat(@stack.pop)
+                                when 'recapture'
+                                    block = @stack.pop
+                                    cmdn.times {@iqueue.unshift(*block)}
+                                    break
                                 when 'clear'
                                     @stack = []
                                     break
-                                else
-                                    if VIM::evaluate("exists('g:tcalc_shortcut_#{cmda}')") == '1'
-                                        sc = VIM::evaluate("g:tcalc_shortcut_#{cmda}").split(/\s+/)
-                                        iqueue = sc + iqueue
+                                when 'if'
+                                    test, ifblock = @stack[-2..-1]
+                                    @stack[-2..-1] = nil
+                                    if test
+                                        @iqueue.unshift(*ifblock)
+                                    end
+                                when 'ifelse'
+                                    test, ifblock, elseblock= @stack[-3..-1]
+                                    @stack[-3..-1] = nil
+                                    if test
+                                        @iqueue.unshift(*ifblock)
+                                    else
+                                        @iqueue.unshift(*elseblock)
+                                    end
+                                when '#'
+                                    if cmdw
+                                        item = @words[cmdw][0]
+                                    else
+                                        item = @stack.delete_at(-cmdn - 1)
+                                    end
+                                    argn = item.method(cmdx).arity
+                                    args = get_args(1, argn)
+                                    val  = 
+                                    if cmdw
+                                        @words[cmdw].map! {|item| item.send(cmdx, *args)}
+                                    else
+                                        @stack << item.send(cmdx, *args)
                                     end
                                 end
+                            elsif Float.instance_methods.include?(cmda)
+                                argn = Float.instance_method(cmda).arity
+                                args = get_args(0, argn)
+                                @stack += [args[0].send(cmda, *args[1..-1])].flatten
+                            elsif Float.constants.include?(cmda)
+                                @stack << Float.const_get(cmda)
+                            elsif Math.constants.include?(cmda)
+                                @stack << Math.const_get(cmda)
+                            elsif Math.methods.include?(cmda)
+                                argn = Math.method(cmda).arity
+                                args = get_args(1, argn)
+                                @stack += [Math.send(cmda, *args)].flatten
+                            elsif @words.has_key?(cmda)
+                                @iqueue.unshift(*@words[cmda])
+                            elsif VIM::evaluate("exists('g:tcalc_shortcut_#{cmda}')") == '1'
+                                sc = tokenize(VIM::evaluate("g:tcalc_shortcut_#{cmda}"))
+                                @iqueue.unshift(*sc)
                             end
                         end
                     end
@@ -198,6 +303,14 @@ module TCalc
                 end
             end
         end
+    end
+
+    def get_args(from, to)
+        args = []
+        for i in from..to
+            args << @stack.pop unless @stack.empty?
+        end
+        args.reverse
     end
 
     def format(elt, level=1)
@@ -217,7 +330,7 @@ module TCalc
 
     def completion(alt)
         alx = Regexp.new("^#{Regexp.escape(alt)}.*")
-        ids = Float.instance_methods | Float.constants | Math.methods | Math.constants | @vars.keys | @cmds
+        ids = Float.instance_methods | Float.constants | Math.methods | Math.constants | @words.keys | @cmds
         ids.delete_if {|e| e !~ alx}
     end
 end

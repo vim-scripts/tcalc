@@ -4,13 +4,13 @@
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
 " @Last Change: 2007-10-08.
-" @Revision:    0.3.93
+" @Revision:    0.4.148
 " GetLatestVimScripts: 2040 1 tcalc.vim
 
 if &cp || exists("loaded_tcalc") || !has('ruby')
     finish
 endif
-let loaded_tcalc = 3
+let loaded_tcalc = 4
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -20,11 +20,22 @@ if !exists('g:tcalc_shortcut_rev') "{{{2
     let g:tcalc_shortcut_rev = '1.0 swap /'
 endif
 
+if !exists('g:tcalc_shortcut_deffib') "{{{2
+    let g:tcalc_shortcut_deffib = ':fib dup 1 > ( dup 1 - fib swap 2 - fib + ) if ;'
+endif
+
+if !exists('g:tcalc_initialize') "{{{2
+    " let g:tcalc_initialize = ':testword 1 1 + ;'
+    let g:tcalc_initialize = ''
+endif
+
 if !exists('g:tcalc_lines') "{{{2
     let g:tcalc_lines = 10
 endif
 
 
+" :display: TCalc[!]
+" With !, use as full-screen calculator.
 command! -bang TCalc call tcalc#Calculator(!empty('<bang>'))
 
 
@@ -32,63 +43,6 @@ let &cpo = s:save_cpo
 unlet s:save_cpo
 
 finish
-
-
-A small ruby-based[*] RPN-calculator.
-
-Command:
-    :TCalc[!]
-        With !, use as full-screen calculator.
-
-Input:
-    - Numbers (anything starting with "-" or a decimal)
-    - Methods (Float instance methods[1] or Math module methods[2])
-    - Shortcuts (apply the g:tcalc_NAME format string)
-    - #N (pull the item at position N to the top)
-    - ,NAME (push a variable)
-    - Commands
-        let, =, VARIABLE=
-            Define a variable (e.g. let,VARIABLE), the variable can be 
-            referenced by it name.
-        rm, unlet
-            Remove a variable (e.g. rm,VARIABLE)
-        vars, ls
-            List variables
-        p, pop, .
-            Pop/remove item(s)
-        d, dup
-            Duplicate the top item
-        r, rot
-            Rotate, push the top item to the back
-        s, swap
-            Reverse slice
-        gN, groupN, )N
-            Replace N elements with an array
-        u, ungroup, (
-            Replace an array with its elements
-        clear
-            Clear the stack
-        y, yank, copy, c
-            Copy the top N items to a register (* by default). This 
-            command takes a register as optional argument, e.g., "y,e"
-    - Enter, escape => exit
-
-Every method/shortcut/command may take a count as optional argument to 
-repeat the command n times. E.g. "+3" will sum up the top 3 numbers, 
-"y3" will copy the top 3 items in the "*" register.
-
-The calculator has command-line completion enabled. But:
-    - This only works if you input single tokens at a time, i.e. 
-      "0.5<cr>sin<cr>".
-    - Be aware that not every method is useful in the context of this 
-      plugin.
-
-
-[*] Built-in ruby support (:echo has('ruby')) is required.
-[1] http://www.ruby-doc.org/core/classes/Float.html
-[2] http://www.ruby-doc.org/core/classes/Math.html
-
-
 CHANGES:
 0.1
 - Initial release
@@ -114,4 +68,22 @@ referred to by # (= top element) or #N).
 - Removed dependency on tlib
 - Variables; ls, vars, let, =, rm commands
 - Command line completion for variables and commands
+
+0.4
+- COUNT can be "#", in which case the top number on the stack will be 
+used (e.g. "3 dup3" is the same as "3 3 dup#")
+- Disabled vars, (, ) commands
+- Variables are words
+- New words can be defined in a forth-like manner ":NAME ... ;"
+- Built-in commands get evaluated before any methods.
+- Messages can be sent to objects on the stack by "#N,METHOD", e.g. "1 2 
+g2 3 #1,<<" yields "[1,2,3]"
+- The copyN, cN command now means: push a copy of element N.
+- ( ... ) push unprocessed tokens as array
+- recapture command (feed an array of unprocessed tokens to the input 
+queue)
+- if, ifelse commands
+- delN, deleteN commands
+- Can push strings ("foo bar")
+- "Symbols" à la 'foo (actually a string)
 
