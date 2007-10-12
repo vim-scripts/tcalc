@@ -5,53 +5,25 @@
     A small ruby-based[*] RPN-calculator.
 
 Input:
-    - Numbers (anything starting with "-" or a decimal)
+    - Numbers (anything that starts with "-" or a decimal)
+    - Strings (anything that matches /^"(.*?)"$/)
+        - Be aware that the strings and numbers get evaluated by ruby. 
+          You can thus execute ruby code by input like: -1;p'foo'
     - Methods (Float instance methods[1] or Math module methods[2])
     - Shortcuts (apply the g:tcalc_shortcut_NAME format string)
     - #N (pull the item at position N to the top)
-    - Commands (see below)
+    - Commands: COMMAND[COUNT][,ARGUMENT]
+        - If COUNT is "#", the top element will be used.
     - Enter, escape => exit
 
-Commands:
-    let, =, VARIABLE=
-        Set a variable (e.g. let,WORD) to the value of the top element, 
-        the variable can be referenced by it name.
-    rm, unlet
-        Remove a word (e.g. rm,WORD)
-    ls
-        List words
-    p, pop, .
-        Pop/remove item(s)
-    d, dup
-        Duplicate the top item
-    r, rot
-        Rotate, push the top item to the back
-    s, swap
-        Reverse slice
-    gN, groupN
-        Replace N elements with an array
-    u, ungroup
-        Replace an array with its elements (splice)
-    clear
-        Clear the stack
-    y, yank
-        Copy the top N items to a register (* by default). This command 
-        takes a register as optional argument, e.g., "y,e"
-    cN, copyN
-        Push a copy of element N
-    :WORD ... ;
-        Define a new word/shortcut (the ending ";" token must be in the 
-        input queue)
-        Example:
-            :fib dup 1 > ( dup 1 - fib swap 2 - fib + ) if ;
-    #N,METHOD
-        Send METHOD to element N on the stack
-    if, ifelse (CONDITION IFBLOCK ELSEBLOCK)
-        Feed IFBLOCK or ELSEBLOCK to the input queue depending on 
-        CONDITION.
 
-Syntax for commands: COMMAND[COUNT][,ARGUMENT]
-    - If COUNT is "#", the top element will be used.
+[*] Built-in ruby support (:echo has('ruby')) is required.
+[1] http://www.ruby-doc.org/core/classes/Float.html
+[2] http://www.ruby-doc.org/core/classes/Math.html
+
+
+-----------------------------------------------------------------------
+Commands~
 
 Every method/shortcut/command may take a count as optional argument to 
 repeat the command n times. E.g. "+3" will sum up the top 3 numbers, 
@@ -64,9 +36,84 @@ The calculator has command-line completion enabled. But:
       plugin.
 
 
-[*] Built-in ruby support (:echo has('ruby')) is required.
-[1] http://www.ruby-doc.org/core/classes/Float.html
-[2] http://www.ruby-doc.org/core/classes/Math.html
+Words:
+    VARIABLE=
+        Set a variable (e.g. let,WORD) to the value of the top element, 
+        the variable can be referenced by it name.
+        EXAMPLE: >
+        1 a=
+<
+    :WORD ... ;
+        Define a new word/shortcut (the ending ";" token must be in the 
+        input queue)
+        EXAMPLE: >
+            :fib dup 1 > ( dup 1 - fib swap 2 - fib + ) if ;
+<
+    rm, unlet
+        Remove a word (e.g. rm,WORD)
+
+    ls
+        List words
+
+Stack:
+    p, pop, .
+        Pop/remove item(s)
+
+    d, dup
+        Duplicate the top item
+
+    cN, copyN
+        Push a copy of element N
+
+    r, rot
+        Rotate, push the top item to the back
+
+    s, swap
+        Reverse slice
+
+    gN, groupN
+        Replace N elements with an array
+
+    u, ungroup
+        Replace an array with its elements (splice)
+
+    clear
+        Clear the stack
+
+View:
+    hex, HEX, oct, bin, dec, float
+        Change the way numbers are formatted. Calculations are always made 
+        with floats.
+
+    print, inspect
+        Use ruby's inspect. (DEFAULT)
+
+    format,%FORMAT
+        Define a format.
+
+Control:
+    #N,METHOD
+        Send METHOD to element N (any ruby object) on the stack.
+        You can also send methods to variablies.
+        EXAMPLE: >
+            1 2 g2 a= 3 #a,<<
+            ls
+            => a: 1.0 2.0 3.0
+<
+    if, ifelse (CONDITION IFBLOCK ELSEBLOCK)
+        Feed IFBLOCK or ELSEBLOCK to the input queue depending on 
+        CONDITION.
+
+    ( ... )
+        Push unprocessed tokens on the stack (as array).
+
+    recapture
+        Prepend unprocessed tokens on the stack to the input queue.
+
+VIM Integration:
+    y, yank
+        Copy the top N items to a register (* by default). This command 
+        takes a register as optional argument, e.g., "y,e"
 
 
 -----------------------------------------------------------------------

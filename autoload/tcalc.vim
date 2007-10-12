@@ -3,8 +3,8 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-10-08.
-" @Revision:    0.0.466
+" @Last Change: 2007-10-12.
+" @Revision:    0.0.478
 
 if &cp || exists("loaded_tcalc_autoload")
     finish
@@ -68,9 +68,7 @@ endf
 
 ruby <<EOR
 module TCalc
-    @stack  = []
-    @format = '%p'
-    @cmds   = [
+    @cmds = [
         'ls',
         'yank', 'y',
         'let',
@@ -90,6 +88,8 @@ module TCalc
         'scope_begin', 'scope_end',
         '#',
     ]
+    @stack   = []
+    @format  = '%p'
     @words   = {}
     @word_rx = '[[:alpha:]_]+'
     @debug   = false
@@ -157,7 +157,8 @@ module TCalc
                         @words[$1] = @iqueue[0 .. idx - 1]
                         @iqueue[0 .. idx] = nil
                     else
-                        cmdm = /^(.|#?#@word_rx)(#|\d+)?(,(.+))?$/.match(cmd)
+                        cmdm = /^(#?[^#,[:digit:]]*)(#|\d+)?(,(.+))?$/.match(cmd)
+                        # p "DBG", cmdm
                         cmda = cmdm[1]
                         cmdn = cmdm[2]
                         cmdx = cmdm[4]
@@ -278,23 +279,30 @@ module TCalc
                                         @stack << item.send(cmdx, *args)
                                     end
                                 end
+                            elsif @words.has_key?(cmda)
+                                # p "DBG word"
+                                @iqueue.unshift(*@words[cmda])
+                            elsif VIM::evaluate("exists('g:tcalc_shortcut_#{cmda}')") == '1'
+                                # p "DBG shortcut"
+                                sc = tokenize(VIM::evaluate("g:tcalc_shortcut_#{cmda}"))
+                                @iqueue.unshift(*sc)
                             elsif Float.instance_methods.include?(cmda)
+                                # p "DBG float"
                                 argn = Float.instance_method(cmda).arity
                                 args = get_args(0, argn)
+                                # p "DBG", argn, args
                                 @stack += [args[0].send(cmda, *args[1..-1])].flatten
                             elsif Float.constants.include?(cmda)
+                                # p "DBG float constant"
                                 @stack << Float.const_get(cmda)
                             elsif Math.constants.include?(cmda)
+                                # p "DBG math constant"
                                 @stack << Math.const_get(cmda)
                             elsif Math.methods.include?(cmda)
+                                # p "DBG math"
                                 argn = Math.method(cmda).arity
                                 args = get_args(1, argn)
                                 @stack += [Math.send(cmda, *args)].flatten
-                            elsif @words.has_key?(cmda)
-                                @iqueue.unshift(*@words[cmda])
-                            elsif VIM::evaluate("exists('g:tcalc_shortcut_#{cmda}')") == '1'
-                                sc = tokenize(VIM::evaluate("g:tcalc_shortcut_#{cmda}"))
-                                @iqueue.unshift(*sc)
                             end
                         end
                     end

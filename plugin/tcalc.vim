@@ -3,14 +3,14 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-10-08.
-" @Revision:    0.4.148
+" @Last Change: 2007-10-12.
+" @Revision:    0.5.150
 " GetLatestVimScripts: 2040 1 tcalc.vim
 
 if &cp || exists("loaded_tcalc") || !has('ruby')
     finish
 endif
-let loaded_tcalc = 4
+let loaded_tcalc = 5
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -86,4 +86,7 @@ queue)
 - delN, deleteN commands
 - Can push strings ("foo bar")
 - "Symbols" à la 'foo (actually a string)
+
+0.5
+- Minor fix: command regexp
 
