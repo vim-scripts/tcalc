@@ -10,7 +10,6 @@ Input:
         - Be aware that the strings and numbers get evaluated by ruby. 
           You can thus execute ruby code by input like: -1;p'foo'
     - Methods (Float instance methods[1] or Math module methods[2])
-    - Shortcuts (apply the g:tcalc_shortcut_NAME format string)
     - #N (pull the item at position N to the top)
     - Commands: COMMAND[COUNT][,ARGUMENT]
         - If COUNT is "#", the top element will be used.
@@ -25,7 +24,7 @@ Input:
 -----------------------------------------------------------------------
 Commands~
 
-Every method/shortcut/command may take a count as optional argument to 
+Every method/word/command may take a count as optional argument to 
 repeat the command n times. E.g. "+3" will sum up the top 3 numbers, 
 "y3" will copy the top 3 items in the "*" register.
 
@@ -44,7 +43,7 @@ Words:
         1 a=
 <
     :WORD ... ;
-        Define a new word/shortcut (the ending ";" token must be in the 
+        Define a new word (the ending ";" token must be in the 
         input queue)
         EXAMPLE: >
             :fib dup 1 > ( dup 1 - fib swap 2 - fib + ) if ;
@@ -115,6 +114,48 @@ VIM Integration:
         Copy the top N items to a register (* by default). This command 
         takes a register as optional argument, e.g., "y,e"
 
+Arrays:
+    [ item1 item2 ... ]
+        Push processed items as array.
+
+    ARRAY INDEX at
+        Push the item at INDEX. In a multi-dimensional array, INDEX can be an 
+        array.
+
+        Example: >
+            [ 'a 'b 'c ] 1 at
+            => "b"
+
+Rational numbers:
+    NUMERATOR DENOMINATOR Rational
+        Example: >
+            1 2 Rational
+
+Complex numbers:
+    REAL IMAGINARY Complex
+        Example: >
+            2 3 Complex
+
+Integers:
+    NUMBER Integer
+        This isn't really useful as the number will be soon converted back to a 
+        float.
+
+Matrix:
+    ARRAY Matrix
+        Example: >
+            [ [2 1] [-1 1] ] Matrix
+
+            d [ 0 1 ] at
+            => 1.0
+
+            d determinant
+            => 3.0
+
+
+Known Problems:
+    - One cannot send methods containing digits in their names (eg log10).
+
 
 -----------------------------------------------------------------------
 Install~
@@ -132,6 +173,8 @@ please make sure, you have the current version of vimball (vimscript
 Contents~
 
     plugin/tcalc.vim
+        g:tcalc_initialize ... |g:tcalc_initialize|
+        g:tcalc_lines ........ |g:tcalc_lines|
         :TCalc ............... |:TCalc|
     autoload/tcalc.vim
         tcalc#Calculator ..... |tcalc#Calculator()|
@@ -140,6 +183,15 @@ Contents~
 
 ------------------------------------------------------------------------
 plugin/tcalc.vim~
+
+                                                    *g:tcalc_initialize*
+g:tcalc_initialize
+    A string that will be read when first invoking |:TCalc|.
+    Define some abbreviations. Use 'ls' to see them.
+
+                                                    *g:tcalc_lines*
+g:tcalc_lines                  (default: 10)
+    The height of the window.
 
                                                     *:TCalc*
 TCalc[!]

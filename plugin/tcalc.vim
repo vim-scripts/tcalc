@@ -3,34 +3,38 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-10-12.
-" @Revision:    0.5.150
+" @Last Change: 2007-10-26.
+" @Revision:    0.6.189
 " GetLatestVimScripts: 2040 1 tcalc.vim
 
 if &cp || exists("loaded_tcalc") || !has('ruby')
     finish
 endif
-let loaded_tcalc = 5
+let loaded_tcalc = 6
 
 let s:save_cpo = &cpo
 set cpo&vim
 
-
-if !exists('g:tcalc_shortcut_rev') "{{{2
-    let g:tcalc_shortcut_rev = '1.0 swap /'
+if !exists('g:tcalc_initialize')
+    " A string that will be read when first invoking |:TCalc|.
+    " Define some abbreviations. Use 'ls' to see them.
+    " :nodefault:
+    " :read: let g:tcalc_initialize = '' "{{{2
+    let g:tcalc_initialize = '
+                \ :rev 1 swap / ;
+                \ :fib dup 1 > ( dup 1 - fib swap 2 - fib + ) if ;
+                \ :ln log ;
+                \ :ld log 2 log / ;
+                \ :logx swap log swap log / ;
+                \ :Z Integer ;
+                \ :Q Rational ;
+                \ :C Complex ;
+                \ '
 endif
 
-if !exists('g:tcalc_shortcut_deffib') "{{{2
-    let g:tcalc_shortcut_deffib = ':fib dup 1 > ( dup 1 - fib swap 2 - fib + ) if ;'
-endif
-
-if !exists('g:tcalc_initialize') "{{{2
-    " let g:tcalc_initialize = ':testword 1 1 + ;'
-    let g:tcalc_initialize = ''
-endif
-
-if !exists('g:tcalc_lines') "{{{2
-    let g:tcalc_lines = 10
+if !exists('g:tcalc_lines')
+    " The height of the window.
+    let g:tcalc_lines = 10 "{{{2
 endif
 
 
@@ -89,4 +93,11 @@ queue)
 
 0.5
 - Minor fix: command regexp
+
+0.6
+- Included support for rational and complex numbers
+- Included matrix support 
+- Syntax for pushing arrays [ a b c ... ]
+- New at method to select an item from array-like objects
+- Removed shortcut variables.
 
