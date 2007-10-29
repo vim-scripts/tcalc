@@ -3,8 +3,8 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-10-23.
-" @Revision:    0.0.511
+" @Last Change: 2007-10-28.
+" @Revision:    0.0.514
 
 if &cp || exists("loaded_tcalc_autoload")
     finish
@@ -26,7 +26,7 @@ function! tcalc#Calculator(full_screen) "{{{3
     setlocal foldmethod=manual
     setlocal foldcolumn=0
     setlocal filetype=
-    ruby TCalc.repl
+    ruby TCalc::VIM.repl
     call s:CloseDisplay()
     echo
 endf
@@ -60,7 +60,7 @@ endf
 
 function! tcalc#Complete(ArgLead, CmdLine, CursorPos) "{{{3
     ruby <<EOR
-    ids = TCalc.completion(VIM::evaluate('a:ArgLead'))
+    ids = TCalc::VIM.completion(VIM::evaluate('a:ArgLead'))
     VIM::command("return split(#{ids.join("\n").inspect}, '\n')")
 EOR
 endf

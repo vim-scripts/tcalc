@@ -3,14 +3,21 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-10-26.
-" @Revision:    0.6.189
+" @Last Change: 2007-10-28.
+" @Revision:    0.7.230
 " GetLatestVimScripts: 2040 1 tcalc.vim
+"
+" TODO:
+" - Pretty printing (of arrays)
+" - Doesn't work: [ 1 2 3 ] ( [ 'Numeric 'Numeric 'Numeric ] ) assert
+" - Make it a stand-alone ruby-script
+" - Find a way to plot functions
+" - Integrate with some CAS package/library
 
 if &cp || exists("loaded_tcalc") || !has('ruby')
     finish
 endif
-let loaded_tcalc = 6
+let loaded_tcalc = 7
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -35,6 +42,12 @@ endif
 if !exists('g:tcalc_lines')
     " The height of the window.
     let g:tcalc_lines = 10 "{{{2
+endif
+
+
+if !exists('g:tcalc_dir')
+    " The default directory where "source" finds files.
+    let g:tcalc_dir = fnamemodify('~/.tcalc', ':p') "{{{2
 endif
 
 
@@ -100,4 +113,19 @@ queue)
 - Syntax for pushing arrays [ a b c ... ]
 - New at method to select an item from array-like objects
 - Removed shortcut variables.
+
+0.7
+- Comments: /* ... */
+- New words:
+    - assert: Display an error message if the stack doesn't match the 
+    assertion.
+    - validate: Like assert but push a boolean (the result of the check) 
+    on the stack.
+    - do: synonym for recapture.
+    - source: load a file (see also g:tcalc_dir)
+    - require: load a ruby library
+    - p: print an object (doesn't do much, but prettyprint seems 
+    to have problems)
+    - history (useful when using tcalc as stand-alone calculator)
+- tcalc.rb can now be used as stand-alone program.
 

@@ -106,13 +106,52 @@ Control:
     ( ... )
         Push unprocessed tokens on the stack (as array).
 
-    recapture
+    recapture, do
         Prepend unprocessed tokens on the stack to the input queue.
+
+    assert
+        Display an error if the stack doesn't match the assertion. The last 
+        element on the stack is the assertion (either a string or an 
+        array of unprocessed tokens/strings).
+        Example: With stack: >
+            /* Check if the top element is 2.0 */
+            2 '2.0 assert
+            => true
+
+            /* Check if the top element match */
+            1 'Numeric assert
+            => true
+
+            /* Check if the two top elements match */
+            1 2 ( Numeric Numeric ) assert
+            => true
+            1 2 ( String String ) assert
+            => Expected String, but got 2.0
+
+    validate:
+        Like assert but push the result of the check as boolean on the stack.
+        Example:
+            'foo 'Numeric validate ( 1 + ) ( . ) ifelse
+            => empty stack
+            2 'Numeric validate ( 1 + ) ( . ) ifelse
+            => 3.0
+
+    /* ... */
+        Comments: Ignore tokens.
 
 VIM Integration:
     y, yank
         Copy the top N items to a register (* by default). This command 
         takes a register as optional argument, e.g., "y,e"
+
+    p, puts
+        Print the top item.
+
+    source
+        Read input from a file.
+
+    require
+        Load a ruby library.
 
 Arrays:
     [ item1 item2 ... ]
@@ -175,6 +214,7 @@ Contents~
     plugin/tcalc.vim
         g:tcalc_initialize ... |g:tcalc_initialize|
         g:tcalc_lines ........ |g:tcalc_lines|
+        g:tcalc_dir .......... |g:tcalc_dir|
         :TCalc ............... |:TCalc|
     autoload/tcalc.vim
         tcalc#Calculator ..... |tcalc#Calculator()|
@@ -192,6 +232,10 @@ g:tcalc_initialize
                                                     *g:tcalc_lines*
 g:tcalc_lines                  (default: 10)
     The height of the window.
+
+                                                    *g:tcalc_dir*
+g:tcalc_dir                    (default: fnamemodify('~/.tcalc', ':p'))
+    The default directory where "source" finds files.
 
                                                     *:TCalc*
 TCalc[!]
