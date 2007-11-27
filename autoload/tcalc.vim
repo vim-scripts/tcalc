@@ -3,8 +3,8 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-10-28.
-" @Revision:    0.0.514
+" @Last Change: 2007-11-27.
+" @Revision:    0.0.524
 
 if &cp || exists("loaded_tcalc_autoload")
     finish
@@ -12,12 +12,12 @@ endif
 let loaded_tcalc_autoload = 1
 
 
-function! tcalc#Calculator(full_screen) "{{{3
-    if a:full_screen
-        edit __TCalc__
-    else
+function! tcalc#Calculator(reset, initial_args) "{{{3
+    " if a:full_screen
+    "     edit __TCalc__
+    " else
         split __TCalc__
-    end
+    " end
     setlocal buftype=nofile
     setlocal bufhidden=hide
     setlocal noswapfile
@@ -26,8 +26,18 @@ function! tcalc#Calculator(full_screen) "{{{3
     setlocal foldmethod=manual
     setlocal foldcolumn=0
     setlocal filetype=
-    ruby TCalc::VIM.repl
+    setlocal nowrap 
+    if a:reset
+        ruby TCalc::VIM.reset
+    end
+    ruby TCalc::VIM.repl(VIM::evaluate('a:initial_args'))
     call s:CloseDisplay()
+    echo
+endf
+
+
+function! tcalc#Eval(initial_args) "{{{3
+    ruby TCalc::VIM.evaluate(VIM::evaluate('a:initial_args'))
     echo
 endf
 

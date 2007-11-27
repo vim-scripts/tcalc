@@ -3,8 +3,8 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-10-28.
-" @Revision:    0.7.230
+" @Last Change: 2007-11-27.
+" @Revision:    0.8.315
 " GetLatestVimScripts: 2040 1 tcalc.vim
 "
 " TODO:
@@ -17,7 +17,7 @@
 if &cp || exists("loaded_tcalc") || !has('ruby')
     finish
 endif
-let loaded_tcalc = 7
+let loaded_tcalc = 8
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -28,15 +28,19 @@ if !exists('g:tcalc_initialize')
     " :nodefault:
     " :read: let g:tcalc_initialize = '' "{{{2
     let g:tcalc_initialize = '
-                \ :rev 1 swap / ;
-                \ :fib dup 1 > ( dup 1 - fib swap 2 - fib + ) if ;
-                \ :ln log ;
-                \ :ld log 2 log / ;
-                \ :logx swap log swap log / ;
-                \ :Z Integer ;
-                \ :Q Rational ;
-                \ :C Complex ;
+                \ :binom ( n:Numeric k:Numeric ) args n fak k fak n k - fak * / ;
+                \ :fak ( Numeric ) args dup 1 > ( dup 1 - fak * ) ( . 1 ) ifelse ;
+                \ :fib ( Numeric ) args dup 1 > ( dup 1 - fib swap 2 - fib + ) if ;
+                \ :ld ( Numeric ) args log 2 log / ;
+                \ :ln ( Numeric ) args log ;
+                \ :logx ( number:Numeric base:Numeric ) args number log base log / ;
+                \ :rev ( Numeric ) args 1 swap / ;
+                \ :Z ( Numeric ) args Integer ;
+                \ :Q ( Numeric ) args Rational ;
+                \ :C ( Numeric ) args Complex ;
                 \ '
+    " \ :binom ( Numeric Numeric ) args copy1 fak rot2 dup fak rot2 - fak * / ;
+    " \ :logx ( Numeric Numeric ) args swap log swap log / ;
 endif
 
 if !exists('g:tcalc_lines')
@@ -52,8 +56,10 @@ endif
 
 
 " :display: TCalc[!]
-" With !, use as full-screen calculator.
-command! -bang TCalc call tcalc#Calculator(!empty('<bang>'))
+" With !, reset stack & input queue.
+command! -bang -nargs=* -bar TCalc call tcalc#Calculator(!empty('<bang>'), <q-args>)
+
+" command! -nargs=* -bar TCalcEval call tcalc#Eval(<q-args>)
 
 
 let &cpo = s:save_cpo
@@ -128,4 +134,31 @@ queue)
     to have problems)
     - history (useful when using tcalc as stand-alone calculator)
 - tcalc.rb can now be used as stand-alone program.
+
+0.8
+- Named arguments: args is a synonym for assert but provides for named 
+arguments.
+- New words: Sequence/seq, map, mmap, plot (a simple ASCII function 
+plotter), stack_size, stack_empty?, iqueue_size, iqueue_empty?
+- Syntactic sugar for assignments: VALUE -> VAR
+- Defined "Array" as a synonym for "group"
+- "define" command as alternative to the forth-like syntax for defining 
+words
+- Dynamic binding of words/variables (the words "begin ... end" 
+establish a new scope)
+- The stack, the input queue, and the dictionary are accessible like 
+words (__STACK__, __IQUEUE__, __WORDS__)
+- TCalc and tcalc#Calculator take initial tokens as argument.
+- TCalc! with [!] will reset the stack & input queue.
+- Completion of partial commands
+- Readline-support for CLI mode (--no-curses).
+- Simple key handling for the curses-based frontend
+- Non-VIM-versons save the history in ~/.tcalc/history.txt
+- #VAR,METHOD has slightly changed.
+- TCalc syntax file.
+- FIX: Command line completion
+
+
+" - TCalcEval command that evaluates an expression and copies the result 
+" to the unnamed "" register.
 
