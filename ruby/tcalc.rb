@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # tcalc.rb
-# @Last Change: 2007-11-27.
+# @Last Change: 2007-11-28.
 # Author::      Thomas Link (micathom AT gmail com)
 # License::     GPL (see http://www.gnu.org/licenses/gpl.txt)
 # Created::     2007-10-23.
@@ -67,12 +67,12 @@ class TCalc::Base
             # 'puts', 'pp',
             '#',
         ]
-        @ymarks = ['+', '*', 'x', '.', '#', ':', 'Â°', '^', '@', '$', 'o', '"']
+        @ymarks = ['+', '*', 'x', '.', '#', ':', '°', '^', '@', '$', 'o', '"']
         reset_words
         reset
         @format  = '%p'
         @word_rx = '[[:alpha:]_]+'
-        @debug   = false
+        @debug   = $DEBUG
         @history = []
         @history_size  = 30
         @eval_and_exit = false
@@ -546,12 +546,15 @@ class TCalc::Base
                             end
                         end
                     end
-                # rescue Exception => e
-                #     if @debug
-                #         raise e
-                #     else
-                #         echo_error e.to_s.inspect
-                #     end
+                rescue Exception => e
+                    if @debug
+                        raise e
+                    elsif @eval_and_exit
+                        echo_error '%s: %s' % [e.class, e.to_s]
+                        exit 5
+                    else
+                        echo_error e.to_s.inspect
+                    end
                 end
             end
         end
@@ -956,7 +959,9 @@ class TCalc::Base
         alx = Regexp.new("^#{Regexp.escape(alt)}.*")
         ids = @numclasses.map {|klass|klass.instance_methods | klass.constants}
         ids += Numeric.constants | Numeric.instance_methods | Math.methods | Math.constants | words.keys | @cmds
+        ids.flatten!
         ids.uniq!
+        ids.sort!
         ids.delete_if {|e| e !~ alx}
     end
 end
@@ -1068,19 +1073,11 @@ end
 
 
 class TCalc::CommandLine < TCalc::Base
+    @@readline = false
+
     class << self
         def use_readline(val)
-            if val
-                Readline.completion_proc = proc do |string|
-                    completion(string)
-                end
-
-                class_eval do
-                    def read_input
-                        Readline.readline('> ', true)
-                    end
-                end
-            end
+            @@readline = val
         end
     end
 
@@ -1090,10 +1087,21 @@ class TCalc::CommandLine < TCalc::Base
             cleanup
             exit 1
         end
+
         history = lib_filename('history.txt')
         if File.readable?(history)
             @history = eval(File.read(history))
         end
+
+        if @@readline
+            Readline.completion_proc = proc do |string|
+                completion(string)
+            end
+            def read_input
+                Readline.readline('> ', true)
+            end
+        end
+
         super
     end
 
@@ -1130,6 +1138,10 @@ class TCalc::Curses < TCalc::CommandLine
         super
         require 'curses'
         Curses.init_screen
+        if (@has_colors = Curses.has_colors?)
+            Curses.start_color
+            Curses.init_pair(1, Curses::COLOR_YELLOW, Curses::COLOR_RED);
+        end
     end
 
 
@@ -1252,7 +1264,16 @@ class TCalc::Curses < TCalc::CommandLine
 
     def echo_error(msg)
         Curses.setpos(Curses::lines - 1, 0)
+        if @has_colors
+            Curses.attron(Curses.color_pair(1));
+            Curses.attron(Curses::A_BOLD);
+        end
         Curses.addstr(msg)
+        if @has_colors
+            Curses.attroff(Curses::A_BOLD);
+            Curses.attroff(Curses.color_pair(1));
+        end
+        Curses.refresh
         sleep 1
     end
 

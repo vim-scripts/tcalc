@@ -3,8 +3,8 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-11-27.
-" @Revision:    0.8.315
+" @Last Change: 2007-11-28.
+" @Revision:    0.9.321
 " GetLatestVimScripts: 2040 1 tcalc.vim
 "
 " TODO:
@@ -17,7 +17,7 @@
 if &cp || exists("loaded_tcalc") || !has('ruby')
     finish
 endif
-let loaded_tcalc = 8
+let loaded_tcalc = 9
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -108,7 +108,7 @@ queue)
 - if, ifelse commands
 - delN, deleteN commands
 - Can push strings ("foo bar")
-- "Symbols" Ã  la 'foo (actually a string)
+- "Symbols" à la 'foo (actually a string)
 
 0.5
 - Minor fix: command regexp
@@ -157,6 +157,12 @@ words (__STACK__, __IQUEUE__, __WORDS__)
 - #VAR,METHOD has slightly changed.
 - TCalc syntax file.
 - FIX: Command line completion
+
+0.9
+- Curses frontend: Display error messages properly
+- FIX: readline support.
+- FIX: sort words on completion
+- Distribute as zip
 
 
 " - TCalcEval command that evaluates an expression and copies the result 
