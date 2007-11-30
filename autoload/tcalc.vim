@@ -3,8 +3,8 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-11-27.
-" @Revision:    0.0.524
+" @Last Change: 2007-11-29.
+" @Revision:    0.0.538
 
 if &cp || exists("loaded_tcalc_autoload")
     finish
@@ -26,7 +26,10 @@ function! tcalc#Calculator(reset, initial_args) "{{{3
     setlocal foldmethod=manual
     setlocal foldcolumn=0
     setlocal filetype=
-    setlocal nowrap 
+    setlocal nowrap
+    if g:tcalc_lines < 0
+        exec 'resize '. (-g:tcalc_lines)
+    endif
     if a:reset
         ruby TCalc::VIM.reset
     end
@@ -51,20 +54,34 @@ function! s:CloseDisplay() "{{{3
 endf
 
 
-function! s:DisplayStack(stack) "{{{3
+function! s:PrintArray(lines, reversed, align) "{{{3
     norm! ggdG
-    let ilen = len(a:stack)
+    let arr = split(a:lines, '\n', 1)
+    if !a:reversed
+        let arr = reverse(arr)
+    end
+    let ilen = len(arr)
     let imax = len(ilen)
-    let lines = map(range(ilen), 'printf("%0'. imax .'s: %s", ilen - v:val - 1, a:stack[v:val])')
+    let lines = map(range(ilen), 'printf("%0'. imax .'s: %s", ilen - v:val - 1, arr[v:val])')
     call append(0, lines)
     norm! Gdd
-    let rs = min([g:tcalc_lines, ilen])
-    if winnr('$') > 1
+    if winnr('$') > 1 && g:tcalc_lines >= 0
+        if a:align && g:tcalc_lines > 0
+            let rs = min([g:tcalc_lines, ilen])
+        else
+            let rs = min([&lines, ilen])
+        endif
         exec 'resize '. rs
     endif
-    let top = ilen - g:tcalc_lines
+    " let top = ilen - (g:tcalc_lines >= 0 ? g:tcalc_lines : &lines)
     norm! Gzb
+    echo
     redraw
+endf
+
+
+function! s:DisplayStack(stack_lines) "{{{3
+    return s:PrintArray(a:stack_lines, 1, 1)
 endf
 
 

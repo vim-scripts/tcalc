@@ -3,21 +3,20 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-11-28.
-" @Revision:    0.9.321
+" @Last Change: 2007-11-30.
+" @Revision:    0.10.333
 " GetLatestVimScripts: 2040 1 tcalc.vim
 "
 " TODO:
+" - Error checks for malformed input
 " - Pretty printing (of arrays)
 " - Doesn't work: [ 1 2 3 ] ( [ 'Numeric 'Numeric 'Numeric ] ) assert
-" - Make it a stand-alone ruby-script
-" - Find a way to plot functions
 " - Integrate with some CAS package/library
 
 if &cp || exists("loaded_tcalc") || !has('ruby')
     finish
 endif
-let loaded_tcalc = 9
+let loaded_tcalc = 10
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -44,7 +43,7 @@ if !exists('g:tcalc_initialize')
 endif
 
 if !exists('g:tcalc_lines')
-    " The height of the window.
+    " The height of the window. If negative, use fixed height.
     let g:tcalc_lines = 10 "{{{2
 endif
 
@@ -159,10 +158,16 @@ words (__STACK__, __IQUEUE__, __WORDS__)
 - FIX: Command line completion
 
 0.9
-- Curses frontend: Display error messages properly
+- FIX: Curses frontend: Display error messages properly
 - FIX: readline support.
 - FIX: sort words on completion
 - Distribute as zip
+
+0.10
+- rm,* ... Remove all words
+- If g:tcalc_lines < 0, use fixed window height.
+- VIM: use the tcalc window to display plots, lists etc.
+- FIX: Nested words
 
 
 " - TCalcEval command that evaluates an expression and copies the result 

@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # tcalc.rb
-# @Last Change: 2007-11-28.
+# @Last Change: 2007-11-30.
 # Author::      Thomas Link (micathom AT gmail com)
 # License::     GPL (see http://www.gnu.org/licenses/gpl.txt)
 # Created::     2007-10-23.
@@ -68,7 +68,7 @@ class TCalc::Base
             '#',
         ]
         @ymarks = ['+', '*', 'x', '.', '#', ':', '°', '^', '@', '$', 'o', '"']
-        reset_words
+        reset_words true
         reset
         @format  = '%p'
         @word_rx = '[[:alpha:]_]+'
@@ -124,6 +124,7 @@ class TCalc::Base
                         else
                             depth = 0
                         end
+                        args_to_be_set = true
                         while !iqueue_empty?
                             elt = iqueue_shift
                             case elt
@@ -141,7 +142,11 @@ class TCalc::Base
                                         if body.last == '('
                                             body.pop
                                         else
-                                            body << ')' << 'args'
+                                            body << ')'
+                                            if args_to_be_set
+                                                body << 'args'
+                                                args_to_be_set = false
+                                            end
                                         end
                                     end
                                     depth -= 1
@@ -218,7 +223,7 @@ class TCalc::Base
                                 case cmda
                                 when 'history'
                                     print_array(@history, false, false)
-                                    n = read_input
+                                    n = read_input('Select entry: ')
                                     if n =~ /^\d+$/
                                         iqueue_unshift(*tokenize(@history[n.to_i]))
                                     end
@@ -229,7 +234,7 @@ class TCalc::Base
                                         unless File.exist?(filename)
                                             filename = lib_filename(filename)
                                         end
-                                        if File.exist?(filename)
+                                        if filename and File.exist?(filename)
                                             contents = File.read(filename)
                                             iqueue_unshift(*tokenize(contents))
                                         else
@@ -311,7 +316,12 @@ class TCalc::Base
                                     set_word(cmdx, stack_pop)
 
                                 when 'unlet', 'rm'
-                                    words.delete(cmdx)
+                                    case cmdx
+                                    when '*'
+                                        reset_words
+                                    else
+                                        words.delete(cmdx)
+                                    end
 
                                 when 'begin'
                                     scope_begin
@@ -579,8 +589,17 @@ class TCalc::Base
     end
 
 
-    def reset_words
-        @words_stack = [{'__WORDS__' => nil}]
+    def reset_words(initial=false)
+        new = {'__WORDS__' => nil}
+        unless initial
+            old = words
+            words.each do |k, v|
+                if k =~ /^__.*?__$/
+                    new[k] = v
+                end
+            end
+        end
+        @words_stack = [new]
     end
 
 
@@ -806,8 +825,8 @@ class TCalc::Base
     end
 
 
-    def read_input
-        print '> '
+    def read_input(prompt='> ')
+        print prompt
         STDIN.gets
     end
 
@@ -819,7 +838,7 @@ class TCalc::Base
 
     def initial_iqueue
         init = lib_filename('init.tca')
-        if File.readable?(init)
+        if init and File.readable?(init)
             tokenize(File.read(init))
         else
             []
@@ -1021,7 +1040,8 @@ class TCalc::VIM < TCalc::Base
 
     def display_stack
         dstack = format(stack).join("\n")
-        VIM::evaluate(%{s:DisplayStack(split(#{dstack.inspect}, '\n'))})
+        # VIM::evaluate(%{s:DisplayStack(split(#{dstack.inspect}, '\n'))})
+        VIM::evaluate(%{s:DisplayStack(#{dstack.inspect})})
     end
 
 
@@ -1032,13 +1052,17 @@ class TCalc::VIM < TCalc::Base
 
 
     def print_array(arr, reversed=true, align=true)
-        VIM::command("echo | redraw")
-        super
+        lines = arr.join("\n")
+        rev   = reversed ? 1 : 0
+        align = align ? 1 : 0
+        VIM::evaluate(%{s:PrintArray(#{lines.inspect}, #{rev}, #{align})})
+        # VIM::command("echo | redraw")
+        # super
     end
 
 
-    def read_input
-        VIM::evaluate("input('> ', '', 'customlist,tcalc#Complete')")
+    def read_input(prompt='> ')
+        VIM::evaluate("input(#{prompt.inspect}, '', 'customlist,tcalc#Complete')")
     end
 
 
@@ -1089,7 +1113,7 @@ class TCalc::CommandLine < TCalc::Base
         end
 
         history = lib_filename('history.txt')
-        if File.readable?(history)
+        if history and File.readable?(history)
             @history = eval(File.read(history))
         end
 
@@ -1097,8 +1121,8 @@ class TCalc::CommandLine < TCalc::Base
             Readline.completion_proc = proc do |string|
                 completion(string)
             end
-            def read_input
-                Readline.readline('> ', true)
+            def read_input(prompt='> ')
+                Readline.readline(prompt, true)
             end
         end
 
@@ -1185,16 +1209,17 @@ class TCalc::Curses < TCalc::CommandLine
     end
 
 
-    def read_input(index=0, string='')
+    def read_input(prompt='> ', index=0, string='')
         # Curses.setpos(Curses::lines - 1, 0)
         # Curses.addstr('> ' + string)
         # Curses.getstr
         histidx = -1
+        curcol0 = prompt.size
         curcol  = string.size
         loop do
             Curses.setpos(Curses::lines - 1, 0)
-            Curses.addstr('> ' + string + ' ' * (Curses.cols - curcol - 2))
-            Curses.setpos(Curses::lines - 1, curcol + 2)
+            Curses.addstr(prompt + string + ' ' * (Curses.cols - curcol - curcol0))
+            Curses.setpos(Curses::lines - 1, curcol + curcol0)
             char = Curses.getch
             case char
             when 27, 91
@@ -1230,9 +1255,9 @@ class TCalc::Curses < TCalc::CommandLine
                 curcol -= 1 if curcol > 0
             when Curses::KEY_RIGHT, 67
                 curcol += 1 if curcol < string.size
-            when Curses::KEY_CTRL_E
+            when Curses::KEY_CTRL_E, Curses::KEY_END
                 curcol = string.size
-            when Curses::KEY_CTRL_A
+            when Curses::KEY_CTRL_A, Curses::KEY_HOME
                 curcol = 0
             when Curses::KEY_CTRL_I, 9
                 s = string[0..curcol - 1]
@@ -1246,6 +1271,7 @@ class TCalc::Curses < TCalc::CommandLine
                     end
                 end
             else
+                # string += char.inspect
                 string.insert(curcol, '%c' % char)
                 curcol += 1
             end
@@ -1286,7 +1312,7 @@ if __FILE__ == $0
     eval_and_exit  = false
 
     cfg = TCalc.lib_filename('config.rb')
-    if File.readable?(cfg)
+    if cfg and File.readable?(cfg)
         load cfg
     end
 

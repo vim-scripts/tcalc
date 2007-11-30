@@ -41,6 +41,25 @@ required.
 
 
 -----------------------------------------------------------------------
+Install~                                            *tcalc-install*
+
+As VIM-plugin:
+Extract the archive's contents to ~/vimfiles (or ~/.vim).
+
+Stand-alone ruby script:
+Copy the file ruby/tcalc.rb to your path (you could also rename it to 
+tcalc).
+
+
+-----------------------------------------------------------------------
+Startup~                                            *tcalc-startup*
+
+At startup, two files are read:
+    1. ~/.tcalc/config.rb ... A ruby file
+    2. ~/.tcalc/init.tca  ... The initial input queue
+
+
+-----------------------------------------------------------------------
 Commands~                                           *tcalc-commands*
 
 Every method/word/command may take a count as optional argument to 
@@ -372,26 +391,6 @@ Known Problems:
     - One cannot send methods containing digits in their names (eg log10).
 
 
------------------------------------------------------------------------
-Startup~                                            *tcalc-startup*
-
-At startup, two files are read:
-    1. ~/.tcalc/config.rb ... A ruby file
-    2. ~/.tcalc/init.tca  ... The initial input queue
-
-
------------------------------------------------------------------------
-Install~                                            *tcalc-install*
-
-Edit the vba file and type: >
-
-    :so %
-
-See :help vimball for details. If you have difficulties or use vim 7.0, 
-please make sure, you have the current version of vimball (vimscript 
-#1502) installed.
-
-
 ------------------------------------------------------------------------
 Contents~
 
@@ -416,7 +415,7 @@ g:tcalc_initialize
 
                                                     *g:tcalc_lines*
 g:tcalc_lines                  (default: 10)
-    The height of the window.
+    The height of the window. If negative, use fixed height.
 
                                                     *g:tcalc_dir*
 g:tcalc_dir                    (default: fnamemodify('~/.tcalc', ':p'))
