@@ -1,15 +1,11 @@
 #!/usr/bin/env ruby
 # tcalc.rb
-# @Last Change: 2007-11-30.
+# @Last Change: 2007-12-05.
 # Author::      Thomas Link (micathom AT gmail com)
 # License::     GPL (see http://www.gnu.org/licenses/gpl.txt)
 # Created::     2007-10-23.
 #
 # TODO:
-# - refactor stack & iqueue handling in order to enable local stacks
-# - make the stack, the iqueue, and the dictionary first class objects
-# (so that they can be saved in variables, be passed around as arguments 
-# etc.)
 # - reimplement the whole stuff in java or maybe d? ... or whatever
 # - call this interpreter "whatever" :)
 
@@ -51,7 +47,8 @@ class TCalc::Base
             'Array', 'group', 'g',
             'ungroup', 'u',
             'Sequence', 'seq',
-            'map', 'mmap',
+            'map', 'mmap', 'any?', 'all?',
+            'array_push', 'array_pop', 'array_unshift', 'array_shift', 'array_empty?',
             'plot',
             'if', 'ifelse',
             'recapture', 'do',
@@ -66,14 +63,17 @@ class TCalc::Base
             'p',
             # 'puts', 'pp',
             '#',
+            '!=', 'and', 'or',
         ]
         @ymarks = ['+', '*', 'x', '.', '#', ':', '°', '^', '@', '$', 'o', '"']
         reset_words true
         reset
         @format  = '%p'
         @word_rx = '[[:alpha:]_]+'
-        @debug   = $DEBUG
-        @history = []
+        @debug         = $DEBUG
+        @debug_breaks  = []
+        @debug_status  = 'step'
+        @history       = []
         @history_size  = 30
         @eval_and_exit = false
         @numclasses    = [Float, Complex, Rational, Integer, Matrix, Vector]
@@ -93,6 +93,7 @@ class TCalc::Base
     end
 
 
+    # spaghetti code ahead.
     def repl(initial=[])
         (iqueue).concat(initial) unless initial.empty?
         loop do
@@ -112,22 +113,27 @@ class TCalc::Base
             while !iqueue_empty?
                 begin
                     cmd = iqueue_shift
-                    puts cmd if @debug
+                    # puts cmd if @debug
                     if !cmd.kind_of?(String)
                         stack_push cmd
+
                     elsif cmd == '(' or cmd == '(('
                         body  = []
                         case cmd
                         when '(('
                             depth = 1
+                            args_to_be_set = true
                             body << 'begin' << '('
                         else
                             depth = 0
+                            args_to_be_set = false
                         end
-                        args_to_be_set = true
                         while !iqueue_empty?
                             elt = iqueue_shift
                             case elt
+                            when '(('
+                                depth += 2
+                                body << elt
                             when '('
                                 depth += 1
                                 body << elt
@@ -138,16 +144,15 @@ class TCalc::Base
                                     end
                                     break
                                 else
-                                    if depth == 1
+                                    if depth == 1 and args_to_be_set
+                                        args_to_be_set = false
                                         if body.last == '('
                                             body.pop
                                         else
-                                            body << ')'
-                                            if args_to_be_set
-                                                body << 'args'
-                                                args_to_be_set = false
-                                            end
+                                            body << ')' << 'args'
                                         end
+                                    else
+                                        body << ')'
                                     end
                                     depth -= 1
                                 end
@@ -160,8 +165,10 @@ class TCalc::Base
                         else
                             echo_error 'Unmatched ('
                         end
+
                     elsif cmd == '['
                         stack_push '['
+
                     elsif cmd == ']'
                         start = stack.rindex('[')
                         if start
@@ -171,29 +178,92 @@ class TCalc::Base
                         else
                             echo_error 'Unmatched ]'
                         end
+
                     elsif cmd =~ /^-?\d/
                         stack_push eval(cmd).to_f
+
                     elsif cmd =~ /^"(.*)"$/
                         stack_push eval(cmd)
+
                     elsif cmd =~ /^'(.*)$/
                         stack_push $1
+
                     elsif cmd =~ /^#(\d+)?$/
                         n = 1 + ($1 || 1).to_i
                         val = (stack).delete_at(-n)
                         stack_push val if val
+
                     elsif cmd =~ /^(#@word_rx)=$/
                         set_word($1, stack_pop)
+
                     # elsif cmd =~ /^:(\(.+?\))?(#@word_rx)$/
                     elsif cmd =~ /^:(#@word_rx)$/
                         idx = iqueue.index(';')
                         def_lambda($1, iqueue_get(0 .. idx - 1))
                         iqueue_set 0 .. idx, nil
+
                     elsif cmd == '->'
                         set_word iqueue_shift, stack_pop
+
                     elsif cmd == '/*'
                         idx = iqueue.index('*/')
                         iqueue_set 0 .. idx, nil
+
                     else
+                        if @debug and (@debug_status == 'step' or
+                                       (@debug_status == 'run' and @debug_breaks.any? {|b| cmd =~ b}))
+                            loop do
+                                dbgcmd = read_input('DEBUG (%s): ' % cmd)
+                                case dbgcmd
+                                when 's', 'step'
+                                    @debug_status = 'step'
+
+                                when 'r', 'run'
+                                    @debug_status = 'run'
+
+                                when 'b', 'break'
+                                    bp = read_input('DEBUG Breakpoints (REGEXPs): ')
+                                    bp.split(/\s+/).map do |b|
+                                        @debug_breaks << Regexp.new(b)
+                                    end
+
+                                when 'B', 'unbreak'
+                                    @debug_breaks = []
+
+                                when 'ii', 'iqueue'
+                                    print_array([iqueue.join(' ')])
+                                    press_enter
+
+                                when 'is', 'stack'
+                                    print_array(stack)
+                                    press_enter
+
+                                when 'ls'
+                                    list_words
+
+                                when 'h', 'help'
+                                    print_array([
+                                                 's,  step   ... Step mode',
+                                                 'r,  run    ... Run (until breakpoint is reached)',
+                                                 'b,  break  ... Define breakpoints',
+                                                 'B,  unbreak... Reset breakpoints',
+                                                 'ii, iqueue ... Inspect input queue',
+                                                 'is, stack  ... Inspect input queue',
+                                                 'ls         ... List words',
+                                                 'h,  help   ... Help',
+                                                 'n, c, <CR> ... Continue',
+                                            ], false, false)
+                                    press_enter
+
+                                when 'n', 'c'
+                                    break
+
+                                else
+                                    break
+                                end
+                            end
+                        end
+
                         cmdm = /^(#?[^#,[:digit:]]*)(#|\d+)?(,(.+))?$/.match(cmd)
                         # p "DBG", cmdm
                         cmda = cmdm[1]
@@ -210,8 +280,10 @@ class TCalc::Base
                         case cmdn
                         when '#'
                             cmdn = stack_pop.to_i
+
                         when nil, ''
                             cmdn = 1
+
                         else
                             cmdn = cmdn.to_i
                         end
@@ -221,6 +293,7 @@ class TCalc::Base
                             if @cmds.include?(cmda)
                                 # p "DBG t1"
                                 case cmda
+
                                 when 'history'
                                     print_array(@history, false, false)
                                     n = read_input('Select entry: ')
@@ -230,7 +303,7 @@ class TCalc::Base
 
                                 when 'source'
                                     filename = stack_pop
-                                    if check_this(String, filename, cmda)
+                                    if check_this(String, filename, cmd, cmda)
                                         unless File.exist?(filename)
                                             filename = lib_filename(filename)
                                         end
@@ -244,7 +317,8 @@ class TCalc::Base
                                     break
 
                                 when 'require'
-                                    require stack_pop if check_this(String, stack_get(-1), cmda)
+                                    fname = stack_get(-1)
+                                    require stack_pop if check_this(String, fname, [fname, cmd], cmda)
                                     #
                                 # when 'puts'
                                 #     puts stack_pop
@@ -260,17 +334,20 @@ class TCalc::Base
 
                                 when 'debug'
                                     @debug = cmdn.to_i != 0
+                                    if @debug
+                                        @debug_status = cmdx || 'step'
+                                    end
 
                                 when 'assert'
                                     assertion = stack_pop
-                                    unless check_assertion(assertion)
+                                    unless check_assertion(assertion, [assertion, cmd])
                                         iqueue_reset
                                         break
                                     end
 
                                 when 'args'
                                     assertion = stack_pop
-                                    ok, names = descriptive_assertion(assertion)
+                                    ok, names = descriptive_assertion(assertion, [assertion, cmd])
                                     names.compact.each do |name|
                                         # p "DBG", name
                                         set_word(name, stack_pop)
@@ -282,24 +359,11 @@ class TCalc::Base
 
                                 when 'validate'
                                     assertion = stack_pop
-                                    stack_push check_assertion(assertion, true)
+                                    stack_push check_assertion(assertion, [assertion, cmd], true)
                                     break
 
                                 when 'ls'
-                                    wd = words
-                                    ls = wd.keys.sort.map do |key|
-                                        next if key =~ /^_/
-                                        val = wd[key]
-                                        case val
-                                        when Array
-                                            val = val.join(' ')
-                                        else
-                                            val = val.inspect
-                                        end
-                                        "#{key}: #{val}"
-                                    end
-                                    print_array(ls.compact, true, false)
-                                    press_enter
+                                    list_words
 
                                 when 'yank', 'y'
                                     args = format(stack_get(-cmdn .. -1))
@@ -407,7 +471,7 @@ class TCalc::Base
 
                                 when 'recapture', 'do'
                                     block = stack_pop
-                                    cmdn.times {iqueue_unshift(*block)} if check_this(Array, block, cmda)
+                                    cmdn.times {iqueue_unshift(*block)} if check_this(Array, block, [block, cmd], cmda)
                                     break
 
                                 when 'clear'
@@ -422,7 +486,7 @@ class TCalc::Base
                                     end
 
                                 when 'ifelse'
-                                    test, ifblock, elseblock= stack_get(-3..-1)
+                                    test, ifblock, elseblock = stack_get(-3..-1)
                                     stack_set -3..-1, nil
                                     if test
                                         iqueue_unshift(*ifblock)
@@ -458,6 +522,57 @@ class TCalc::Base
                                     stack_push []
                                     iqueue_unshift *(iseq.flatten)
 
+                                when 'any?'
+                                    fun  = stack_pop
+                                    seq  = stack_pop
+                                    check_this(Array, fun, [seq, fun, cmd], cmda)
+                                    check_this(Array, seq, [seq, fun, cmd], cmda)
+                                    iseq = [false]
+                                    while !seq.empty?
+                                        iseq.unshift(*[seq.pop, fun, '(', true, ')', '('].flatten)
+                                        iseq.push(')', 'ifelse')
+                                    end
+                                    iqueue_unshift *(iseq.flatten)
+
+                                when 'all?'
+                                    fun  = stack_pop
+                                    seq  = stack_pop
+                                    check_this(Array, fun, [seq, fun, cmd], cmda)
+                                    check_this(Array, seq, [seq, fun, cmd], cmda)
+                                    iseq = [true]
+                                    seq.each do |elt|
+                                        iseq.unshift(*[elt, fun, '(', ].flatten)
+                                        iseq.push(')', '(', false, ')', 'ifelse')
+                                    end
+                                    iqueue_unshift *(iseq.flatten)
+
+                                when 'array_push'
+                                    val = stack_pop
+                                    arr = stack_get(-1)
+                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    arr << val
+
+                                when 'array_pop'
+                                    arr = stack_get(-1)
+                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    stack_push arr.pop
+
+                                when 'array_unshift'
+                                    val = stack_pop
+                                    arr = stack_get(-1)
+                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    arr.unshift(val)
+
+                                when 'array_shift'
+                                    arr = stack_get(-1)
+                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    stack_push arr.shift
+
+                                when 'array_empty?'
+                                    arr = stack_get(-1)
+                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    stack_push arr.empty?
+
                                 when 'plot'
                                     xdim = stack_pop
                                     ydim = stack_pop
@@ -486,20 +601,34 @@ class TCalc::Base
                                 when 'Complex'
                                     imaginary = stack_pop
                                     real      = stack_pop
-                                    if check_this(Numeric, imaginary, cmda) and check_this(Numeric, real, cmda)
+                                    if check_this(Numeric, imaginary, [imaginary, real, cmd], cmda) and check_this(Numeric, real, [imaginary, real, cmd], cmda)
                                         stack_push Complex(real, imaginary)
                                     end
 
                                 when 'Matrix'
-                                    if check_this(Array, stack_get(-1), cmda)
+                                    mat = stack_get(-1)
+                                    if check_this(Array, mat, [mat, cmd], cmda)
                                         stack_push Matrix[ *stack_pop ]
                                     end
+
+                                when '!='
+                                    stack_push (stack_pop != stack_pop)
+
+                                when 'and'
+                                    val1 = stack_pop
+                                    val2 = stack_pop
+                                    stack_push (val1 && val2)
+
+                                when 'or'
+                                    val1 = stack_pop
+                                    val2 = stack_pop
+                                    stack_push (val1 || val2)
 
                                 when '#'
                                     if cmdw
                                         item = get_word(cmdw)
                                     else
-                                        item = (stack).delete_at(-cmdn - 1)
+                                        item = (stack).delete_at(-1 - cmdn)
                                     end
                                     argn = item.method(cmdx).arity
                                     args = get_args(1, argn)
@@ -531,6 +660,7 @@ class TCalc::Base
                                             throw :continue
                                         end
                                     end
+
                                     [Math, *@numclasses].each do |c|
                                         if c.constants.include?(cmda)
                                             # p "DBG #{c} constant"
@@ -538,6 +668,7 @@ class TCalc::Base
                                              throw :continue
                                         end
                                     end
+
                                     if Math.methods.include?(cmda)
                                         # p "DBG t3", cmda
                                         # p "DBG math"
@@ -546,19 +677,31 @@ class TCalc::Base
                                         (stack).concat([Math.send(cmda, *args)].flatten)
                                         throw :continue
                                     end
+
                                     completion = complete_command(cmda, cmdn, cmdx)
                                     if completion
                                         iqueue_unshift(completion)
                                     else
                                         echo_error "Unknown or ambiguous command: #{cmda}"
                                     end
+
                                 end
                             end
                         end
                     end
+
                 rescue Exception => e
                     if @debug
-                        raise e
+                        print_array([
+                            '%s: %s' % [e.class, e.to_s], 
+                            '__IQUEUE__',
+                            iqueue.join(' '),
+                            '__STACK__',
+                            stack,
+                            '__BACKTRACE__',
+                            e.backtrace[0..5]].flatten, true, false)
+                        press_enter
+                        # raise e
                     elsif @eval_and_exit
                         echo_error '%s: %s' % [e.class, e.to_s]
                         exit 5
@@ -600,6 +743,24 @@ class TCalc::Base
             end
         end
         @words_stack = [new]
+    end
+
+
+    def list_words
+        wd = words
+        ls = wd.keys.sort.map do |key|
+            next if key =~ /^_/
+                val = wd[key]
+            case val
+            when Array
+                val = val.join(' ')
+            else
+                val = val.inspect
+            end
+            "#{key}: #{val}"
+        end
+        print_array(ls.compact, true, false)
+        press_enter
     end
 
 
@@ -659,8 +820,8 @@ class TCalc::Base
     end
 
 
-    def stack_push(arg)
-        (stack) << arg
+    def stack_push(*args)
+        (stack).push(*args)
     end
 
 
@@ -875,34 +1036,34 @@ class TCalc::Base
     end
 
 
-    def check_assertion(assertion, quiet=false)
-        ok, names = descriptive_assertion(assertion, quiet)
+    def check_assertion(assertion, cmd, quiet=false)
+        ok, names = descriptive_assertion(assertion, cmd, quiet)
         return ok
     end
 
 
-    def descriptive_assertion(assertion, quiet=false)
+    def descriptive_assertion(assertion, cmd, quiet=false)
         names = []
         case assertion
         when Array
             ok = true
             assertion.reverse.each_with_index do |a, i|
                 item = stack_get(-1 - i)
-                ok1, name = check_item(a, item)
+                ok1, name = check_item(a, item, cmd)
                 names << name
                 if ok and !ok1
                     ok = ok1
                 end
             end
         else
-            ok, name = check_item(assertion, (stack).last, quiet)
+            ok, name = check_item(assertion, (stack).last, cmd, quiet)
             names << name if name
         end
         return [ok, names]
     end
 
 
-    def check_item(expected, observed, quiet=false)
+    def check_item(expected, observed, cmd, quiet=false)
         name = nil
         case expected
         when String
@@ -914,11 +1075,11 @@ class TCalc::Base
         else
             o = expected
         end
-        return [o ? check_this(o, observed, nil, quiet) : true, name]
+        return [o ? check_this(o, observed, cmd, nil, quiet) : true, name]
     end
 
 
-    def check_this(expected, observed, prefix=nil, quiet=false)
+    def check_this(expected, observed, cmd, prefix=nil, quiet=false)
         case expected
         when Class
             ok = observed.kind_of?(expected)
@@ -927,7 +1088,7 @@ class TCalc::Base
         end
         unless quiet
             unless ok
-                echo_error "#{prefix || 'validate'}: Expected #{expected.to_s}, got #{observed.inspect}"
+                echo_error "#{prefix || 'validate'}: Expected #{expected.to_s}, got #{observed.inspect}: #{cmd.inspect}"
             end
         end
         return ok
@@ -964,10 +1125,12 @@ class TCalc::Base
     end
 
 
-    def complete_command(cmda, cmdn, cmdx)
+    def complete_command(cmda, cmdn, cmdx, return_many=false)
         eligible = completion(cmda)
         if eligible.size == 1
             return eligible[0]
+        elsif return_many
+            return eligible
         else
             return nil
         end
@@ -1161,119 +1324,215 @@ class TCalc::Curses < TCalc::CommandLine
     def setup
         super
         require 'curses'
-        Curses.init_screen
-        if (@has_colors = Curses.has_colors?)
-            Curses.start_color
-            Curses.init_pair(1, Curses::COLOR_YELLOW, Curses::COLOR_RED);
+        @curses = Curses
+        @curses.init_screen
+        @curses.cbreak
+        @curses.noecho
+        if (@has_colors = @curses.has_colors?)
+            @curses.start_color
+            @curses.init_pair(1, @curses::COLOR_YELLOW, @curses::COLOR_RED);
         end
     end
 
 
     def cleanup
-        Curses.close_screen
+        @curses.close_screen
         super
     end
 
 
     def display_stack
-        Curses.clear
+        @curses.clear
         dstack = format(stack)
         print_array(dstack)
     end
 
 
     def print_array(arr, reversed=true, align=true)
-        Curses.clear
-        y0   = Curses::lines - 3
-        x0   = 3 + Curses.cols / 3
+        @curses.clear
+        y0   = curses_lines - 3
+        x0   = 3 + @curses.cols / 3
         arr  = arr.reverse if reversed
         idxs = (arr.size - 1).to_s.size
         idxf = "%0#{idxs}d:"
-        xlim = Curses.cols - idxs
+        xlim = @curses.cols - idxs
         xlin = xlim - x0
         arr.each_with_index do |e, i|
-            Curses.setpos(y0 - i, 0)
-            Curses.addstr(idxf % i)
+            @curses.setpos(y0 - i, 0)
+            @curses.addstr(idxf % i)
             if align
                 period = e.rindex(FLOAT_PERIOD) || e.size
-                Curses.setpos(y0 - i, x0 - period)
-                Curses.addstr(e[0..xlin])
+                @curses.setpos(y0 - i, x0 - period)
+                @curses.addstr(e[0..xlin])
             else
-                Curses.setpos(y0 - i, idxs + 2)
-                Curses.addstr(e[0..xlim])
+                @curses.setpos(y0 - i, idxs + 2)
+                @curses.addstr(e[0..xlim])
             end
         end
-        Curses.setpos(y0 + 1, 0)
-        Curses.addstr('-' * Curses.cols)
-        Curses.refresh
+        @curses.setpos(y0 + 1, 0)
+        @curses.addstr('-' * @curses.cols)
+        @curses.refresh
     end
 
 
     def read_input(prompt='> ', index=0, string='')
-        # Curses.setpos(Curses::lines - 1, 0)
-        # Curses.addstr('> ' + string)
-        # Curses.getstr
+        # @curses.setpos(@curses::lines - 1, 0)
+        # @curses.addstr('> ' + string)
+        # @curses.getstr
         histidx = -1
         curcol0 = prompt.size
         curcol  = string.size
+        redraw_stack = false
+        acc = []
+        consume_char = nil
+        debug_key = false
         loop do
-            Curses.setpos(Curses::lines - 1, 0)
-            Curses.addstr(prompt + string + ' ' * (Curses.cols - curcol - curcol0))
-            Curses.setpos(Curses::lines - 1, curcol + curcol0)
-            char = Curses.getch
+            @curses.setpos(@curses::lines - 1, 0)
+            @curses.addstr(prompt + string + ' ' * (@curses.cols - curcol - curcol0))
+            @curses.setpos(@curses::lines - 1, curcol + curcol0)
+            char = callcc do |cont|
+                consume_char = cont
+                @curses.getch
+            end
+            if redraw_stack
+                display_stack
+                redraw_stack = false
+            end
             case char
-            when 27, 91
-            # when Curses::KEY_EXIT, 4, 27
-            #     return ''
-            when Curses::KEY_EOL, 10
+            when 27
+                acc = [27]
+            when @curses::KEY_EOL, 10
                 return string
-            when Curses::KEY_BACKSPACE, 8
+            when @curses::KEY_BACKSPACE, 8, 127
                 if curcol > 0
                     string[curcol - 1 .. curcol - 1] = ''
                     curcol -= 1
                 end
-            when Curses::KEY_CTRL_D, 4
+            when @curses::KEY_CTRL_D, 4
                 if curcol < string.size
                     string[curcol .. curcol] = ''
                 end
-            when Curses::KEY_DOWN, 66
-                if histidx > 0
-                    histidx -= 1
-                    string = @history[histidx].dup
-                else
-                    string = ''
-
-                end
+            when @curses::KEY_CTRL_K, 11
+                string[curcol..-1] = ''
                 curcol = string.size
-            when Curses::KEY_UP, 65
+            when @curses::KEY_CTRL_W
+                i = curcol
+                while i > 0
+                    i -= 1
+                    if string[i..i] == ' '
+                        break
+                    end
+                end
+                string[i..curcol] = ''
+                curcol = i
+            when @curses::KEY_UP
                 if histidx < (@history.size - 1)
                     histidx += 1
                     string = @history[histidx].dup
                     curcol = string.size
                 end
-            when Curses::KEY_LEFT, 68
-                curcol -= 1 if curcol > 0
-            when Curses::KEY_RIGHT, 67
-                curcol += 1 if curcol < string.size
-            when Curses::KEY_CTRL_E, Curses::KEY_END
+            when @curses::KEY_DOWN
+                if histidx > 0
+                    histidx -= 1
+                    string = @history[histidx].dup
+                else
+                    histidx = -1
+                    string = ''
+                end
                 curcol = string.size
-            when Curses::KEY_CTRL_A, Curses::KEY_HOME
+            when @curses::KEY_RIGHT
+                curcol += 1 if curcol < string.size
+            when @curses::KEY_LEFT
+                curcol -= 1 if curcol > 0
+            when @curses::KEY_CTRL_E, @curses::KEY_END
+                curcol = string.size
+            when @curses::KEY_CTRL_A, @curses::KEY_HOME
                 curcol = 0
-            when Curses::KEY_CTRL_I, 9
+            when @curses::KEY_CTRL_I, 9
                 s = string[0..curcol - 1]
                 m = /\S+$/.match(s)
                 if m
                     c0 = m[0]
-                    cc = complete_command(c0, nil, nil)
-                    if cc
+                    cc = complete_command(c0, nil, nil, true)
+                    case cc
+                    when Array
+                        print_array(cc.sort)
+                        redraw_stack = true
+                    when String
                         string = [s, cc[c0.size .. -1], string[curcol .. - 1]].join
                         curcol += cc.size - c0.size
+                    else
+                        echo_error('No completion: %s' % c0, 0.5)
                     end
                 end
             else
-                # string += char.inspect
-                string.insert(curcol, '%c' % char)
-                curcol += 1
+                if acc.empty?
+                    string.insert(curcol, '%c' % char)
+                    curcol += 1
+                elsif char
+                    acc << Curses.keyname(char)
+                    case acc
+                    when [27, '[', 'A']
+                        acc = []
+                        consume_char.call @curses::KEY_UP
+                    when [27, '[', 'B']
+                        acc = []
+                        consume_char.call @curses::KEY_DOWN
+                    when [27, '[', 'C']
+                        acc = []
+                        consume_char.call @curses::KEY_RIGHT
+                    when [27, '[', 'D']
+                        acc = []
+                        consume_char.call @curses::KEY_LEFT
+                    when [27, '[', '7', '~']
+                        acc = []
+                        consume_char.call @curses::KEY_HOME
+                    when [27, '[', '8', '~']
+                        acc = []
+                        consume_char.call @curses::KEY_END
+                    when [27, '[', '1', '1', '~']
+                        acc = []
+                        string += ' ls'
+                        consume_char.call @curses::KEY_EOL
+                    when [27, '[', '2', '0', '~']
+                        acc = []
+                        debug_key = !debug_key
+                    when [27, '[', '3', '~']
+                        acc = []
+                        consume_char.call @curses::KEY_CTRL_D
+                    when [27, 'O', 'a'] # ctrl-up
+                        acc = []
+                    when [27, 'O', 'b'] # ctrl-down
+                        acc = []
+                    when [27, 'O', 'c'] # ctrl-right
+                        acc = []
+                        while curcol < string.size
+                            if string[curcol..curcol] == ' '
+                                break
+                            end
+                            curcol += 1
+                        end
+                    when [27, 'O', 'd'] # ctrl-left
+                        acc = []
+                        while curcol > 0
+                            if string[curcol..curcol] == ' '
+                                break
+                            end
+                            curcol -= 1
+                        end
+                    when [27, '[', '3', '^'] # ctrl-del
+                        acc = []
+                    when [27, '[', '5', '~'] # page-up
+                        acc = []
+                    when [27, '[', '6', '~'] # page-down
+                        acc = []
+                    else
+                        if debug_key
+                            string += acc.inspect
+                            curcol = string.size
+                        end
+                    end
+                end
             end
         end
     end
@@ -1281,26 +1540,30 @@ class TCalc::Curses < TCalc::CommandLine
 
     def press_enter
         msg = '-- Press ANY KEY --'
-        # Curses.setpos(Curses::lines - 1, Curses::cols - msg.size)
-        Curses.setpos(Curses::lines - 1, 0)
-        Curses.addstr(msg)
-        Curses.getch
+        # @curses.setpos(@curses::lines - 1, @curses::cols - msg.size)
+        @curses.setpos(@curses::lines - 1, 0)
+        @curses.addstr(msg)
+        @curses.getch
     end
 
 
-    def echo_error(msg)
-        Curses.setpos(Curses::lines - 1, 0)
+    def echo_error(msg, secs=1)
+        @curses.setpos(@curses::lines - 1, 0)
         if @has_colors
-            Curses.attron(Curses.color_pair(1));
-            Curses.attron(Curses::A_BOLD);
+            @curses.attron(@curses.color_pair(1));
+            @curses.attron(@curses::A_BOLD);
         end
-        Curses.addstr(msg)
+        @curses.addstr(msg)
         if @has_colors
-            Curses.attroff(Curses::A_BOLD);
-            Curses.attroff(Curses.color_pair(1));
+            @curses.attroff(@curses::A_BOLD);
+            @curses.attroff(@curses.color_pair(1));
         end
-        Curses.refresh
-        sleep 1
+        @curses.refresh
+        sleep secs
+    end
+
+    def curses_lines
+        @curses.lines
     end
 
 end

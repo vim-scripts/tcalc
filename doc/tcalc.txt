@@ -344,6 +344,18 @@ Arrays:
             [ 1 2 3 ] ( 2 ** ) mmap
             => [[1, 1.0], [2, 4.0], [3, 9.0]]
 <  
+    [ ARRAY ] ( BLOCK ) any?
+        Check if any the elements in the array are true for BLOCK.
+        Example: >
+            [ 1 2 3 ] ( 2 > ) any? ( 1 ) ( -1 ) ifelse
+            => 1.0
+<  
+    [ ARRAY ] ( BLOCK ) all?
+        Check if all the elements in the array are true for BLOCK.
+        Example: >
+            [ 1 2 3 ] ( 2 > ) all? ( 1 ) ( -1 ) ifelse
+            => -1.0
+<  
     MMAP YDIM XDIM plot
         A simplicistic ASCII function plotter.
         VIM: The plot command takes a register as optional argument 
@@ -354,6 +366,15 @@ Arrays:
             => Some sort of sinus + cosinus plot on a 10x10 ASCII canvas. The 
             "0" after "sin" will make tcalc plot the x-axis too.
 <  
+    ARRAY ELEMENT array_push
+    ARRAY array_pop
+    ARRAY ELEMENT array_unshift
+    ARRAY array_shift
+        These commands are only using when working with array on the 
+        stack that aren't assigned to a word.
+
+    ARRAY array_empty?
+
 
                                                     *tcalc-numbers*
 Rational numbers:
@@ -389,6 +410,33 @@ Matrix:
 
 Known Problems:
     - One cannot send methods containing digits in their names (eg log10).
+
+
+
+-----------------------------------------------------------------------
+Examples~
+
+Simple-minded primes generator: >
+
+    :primes ( top:Numeric ) args
+        (( known_primes:Array current:Numeric top:Numeric )
+            current top <=
+                ( 
+                    [ known_primes ] (( prime:Numeric ) current prime % 0 != ) all?
+                        ( [ known_primes current ] )
+                        ( [ known_primes ] )
+                        ifelse
+                    current 2 +
+                    top
+                    primes_helper
+                )
+                (
+                    [ known_primes ]
+                )
+                ifelse
+        ) -> primes_helper
+        [ 2 ] 3 top primes_helper
+    ;
 
 
 ------------------------------------------------------------------------

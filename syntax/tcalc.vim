@@ -3,8 +3,8 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-11-27.
-" @Last Change: 2007-11-29.
-" @Revision:    0.0.43
+" @Last Change: 2007-12-04.
+" @Revision:    0.0.44
 
 if version < 600
     syntax clear
@@ -46,7 +46,7 @@ syntax keyword TCalcWords
             \ zero?
 
 syntax match TCalcDefWord /\(:\w\+\ze\(\s\|$\)\|\(^\|\s\)\zs;\)/
-syntax match TCalcOperations /[+*/%\<>=^-]\+/
+syntax match TCalcOperations /[+*/%\<>=!^-]\+/
 syntax match TCalcNumeric /[+-]\?\d\S*/
 syntax match TCalcArgument /\w\+:\S\+/ contained containedin=TCalcBlock
 syntax region TCalcString start=/"/ end=/"/ skip=/\\"/

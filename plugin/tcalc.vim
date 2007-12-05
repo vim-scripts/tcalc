@@ -3,8 +3,8 @@
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2007-10-07.
-" @Last Change: 2007-11-30.
-" @Revision:    0.10.333
+" @Last Change: 2007-12-05.
+" @Revision:    0.11.353
 " GetLatestVimScripts: 2040 1 tcalc.vim
 "
 " TODO:
@@ -16,7 +16,7 @@
 if &cp || exists("loaded_tcalc") || !has('ruby')
     finish
 endif
-let loaded_tcalc = 10
+let loaded_tcalc = 11
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -168,6 +168,14 @@ words (__STACK__, __IQUEUE__, __WORDS__)
 - If g:tcalc_lines < 0, use fixed window height.
 - VIM: use the tcalc window to display plots, lists etc.
 - FIX: Nested words
+
+0.11
+- New words: all?, any?, array_*, and, or, !=
+- Debugger (sort of)
+- Curses frontend: Show possible completions; map 127 to backspace, F1 
+to 'ls'.
+- FIX: Nested blocks & more
+
 
 
 " - TCalcEval command that evaluates an expression and copies the result 
