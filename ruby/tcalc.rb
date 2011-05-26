@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # tcalc.rb
-# @Last Change: 2007-12-05.
-# Author::      Thomas Link (micathom AT gmail com)
+# @Last Change: 2010-09-19.
+# Author::      Tom Link (micathom AT gmail com)
 # License::     GPL (see http://www.gnu.org/licenses/gpl.txt)
 # Created::     2007-10-23.
 #
@@ -14,7 +14,7 @@ require 'matrix'
 require 'mathn'
 require 'optparse'
 # require 'pp'
-
+require 'continuation' if RUBY_VERSION >= '1.9.0'
 
 module TCalc
     CONFIG_DIR = ENV['TCALC_HOME'] || File.join(ENV['HOME'], '.tcalc')
@@ -59,13 +59,13 @@ class TCalc::Base
             'at',
             'args', 'assert', 'validate',
             'source', 'require',
-            'history',
+            'history', 'help',
             'p',
             # 'puts', 'pp',
             '#',
             '!=', 'and', 'or',
         ]
-        @ymarks = ['+', '*', 'x', '.', '#', ':', '°', '^', '@', '$', 'o', '"']
+        @ymarks = ['+', '*', 'x', '.', '#', ':', '~', '^', '@', '$', 'o', '"']
         reset_words true
         reset
         @format  = '%p'
@@ -73,6 +73,7 @@ class TCalc::Base
         @debug         = $DEBUG
         @debug_breaks  = []
         @debug_status  = 'step'
+        @buffer        = ''
         @history       = []
         @history_size  = 30
         @eval_and_exit = false
@@ -103,7 +104,7 @@ class TCalc::Base
                     return
                 else
                     display_stack
-                    cmdi = read_input
+                    cmdi = read_buffered_input
                     break if quit?(cmdi)
                     @history.unshift(cmdi)
                     @history[@history_size..-1] = nil if @history.size > @history_size
@@ -179,8 +180,11 @@ class TCalc::Base
                             echo_error 'Unmatched ]'
                         end
 
-                    elsif cmd =~ /^-?\d/
+                    elsif cmd =~ /^[+-]?\d/
                         stack_push eval(cmd).to_f
+
+                    elsif cmd =~ /^([+-])?\.(\d.*)$/
+                        stack_push eval('%s0.%s' % [$1, $2]).to_f
 
                     elsif cmd =~ /^"(.*)"$/
                         stack_push eval(cmd)
@@ -264,46 +268,61 @@ class TCalc::Base
                             end
                         end
 
-                        cmdm = /^(#?[^#,[:digit:]]*)(#|\d+)?(,(.+))?$/.match(cmd)
-                        # p "DBG", cmdm
-                        cmda = cmdm[1]
-                        cmdn = cmdm[2]
-                        cmdx = cmdm[4]
+                        cmdm = /^(#?[^@#,[:digit:]]*)(#|\d+)?(@(\d+))?(,(.+))?$/.match(cmd)
+                        cmd_name   = cmdm[1]
+                        cmd_count  = cmdm[2]
+                        cmd_arrity = cmdm[4] ? cmdm[4].to_i : nil
+                        cmd_ext    = cmdm[6]
 
-                        if cmda =~ /^#(#@word_rx)$/
-                            cmda = '#'
+                        if cmd_name =~ /^#(#@word_rx)$/
+                            cmd_name = '#'
                             cmdw = $1
                         else
                             cmdw = nil
                         end
 
-                        case cmdn
+                        case cmd_count
                         when '#'
-                            cmdn = stack_pop.to_i
+                            cmd_count = stack_pop.to_i
 
                         when nil, ''
-                            cmdn = 1
+                            cmd_count = 1
 
                         else
-                            cmdn = cmdn.to_i
+                            cmd_count = cmd_count.to_i
                         end
 
-                        # p "DBG", cmda, cmdn, cmdx
-                        cmdn.times do
-                            if @cmds.include?(cmda)
+                        # p "DBG", cmd_name, cmd_count, cmd_ext
+                        cmd_count.times do
+                            if words.has_key?(cmd_name)
+                                # p "DBG t2"
+                                # p "DBG word"
+                                if cmd_name =~ /^__.*?__$/
+                                    iqueue_unshift(get_word(cmd_name).dup)
+                                else
+                                    iqueue_unshift(*get_word(cmd_name))
+                                end
+
+                            elsif @cmds.include?(cmd_name)
                                 # p "DBG t1"
-                                case cmda
+                                case cmd_name
+
+                                when 'help'
+                                    if help
+                                        return
+                                    end
 
                                 when 'history'
                                     print_array(@history, false, false)
                                     n = read_input('Select entry: ')
                                     if n =~ /^\d+$/
-                                        iqueue_unshift(*tokenize(@history[n.to_i]))
+                                        # iqueue_unshift(*tokenize(@history[n.to_i]))
+                                        @buffer = @history[n.to_i]
                                     end
 
                                 when 'source'
                                     filename = stack_pop
-                                    if check_this(String, filename, cmd, cmda)
+                                    if check_this(String, filename, cmd, cmd_name)
                                         unless File.exist?(filename)
                                             filename = lib_filename(filename)
                                         end
@@ -318,7 +337,7 @@ class TCalc::Base
 
                                 when 'require'
                                     fname = stack_get(-1)
-                                    require stack_pop if check_this(String, fname, [fname, cmd], cmda)
+                                    require stack_pop if check_this(String, fname, [fname, cmd], cmd_name)
                                     #
                                 # when 'puts'
                                 #     puts stack_pop
@@ -333,9 +352,9 @@ class TCalc::Base
                                 #     press_enter
 
                                 when 'debug'
-                                    @debug = cmdn.to_i != 0
+                                    @debug = cmd_count.to_i != 0
                                     if @debug
-                                        @debug_status = cmdx || 'step'
+                                        @debug_status = cmd_ext || 'step'
                                     end
 
                                 when 'assert'
@@ -366,9 +385,9 @@ class TCalc::Base
                                     list_words
 
                                 when 'yank', 'y'
-                                    args = format(stack_get(-cmdn .. -1))
+                                    args = format(stack_get(-cmd_count .. -1))
                                     args = args.join("\n")
-                                    export(cmdx, args)
+                                    export(cmd_ext, args)
                                     break
 
                                 when 'define'
@@ -377,14 +396,14 @@ class TCalc::Base
                                     def_lambda(name, body)
 
                                 when 'let'
-                                    set_word(cmdx, stack_pop)
+                                    set_word(cmd_ext, stack_pop)
 
                                 when 'unlet', 'rm'
-                                    case cmdx
+                                    case cmd_ext
                                     when '*'
                                         reset_words
                                     else
-                                        words.delete(cmdx)
+                                        words.delete(cmd_ext)
                                     end
 
                                 when 'begin'
@@ -415,17 +434,17 @@ class TCalc::Base
                                     @format = '%f'
 
                                 when 'format'
-                                    @format = cmdx
+                                    @format = cmd_ext
 
                                 when 'copy', 'c'
-                                    stack_push stack_get(-cmdn - 1)
+                                    stack_push stack_get(-cmd_count - 1)
                                     break
 
                                 when 'dup', 'd'
                                     stack_push stack_get(-1) unless stack_empty?
 
                                 when 'del', 'delete'
-                                    (stack).delete_at(-cmdn - 1)
+                                    (stack).delete_at(-cmd_count - 1)
                                     break
 
                                 when 'stack_empty?'
@@ -448,19 +467,19 @@ class TCalc::Base
                                     stack_pop
 
                                 when 'rot', 'r'
-                                    n = cmdn + 1
+                                    n = cmd_count + 1
                                     (stack).insert(-n, stack_pop)
                                     break
 
                                 when 'swap', 's'
-                                    n = cmdn + 1
+                                    n = cmd_count + 1
                                     val = stack_get(-n .. -1).reverse
                                     stack_set -n .. -1, val
                                     break
 
                                 when 'g', 'group', 'Array'
                                     acc  = []
-                                    rows = cmdn
+                                    rows = cmd_count
                                     rows.times {acc << stack_pop}
                                     stack_push acc.reverse
                                     break
@@ -471,7 +490,7 @@ class TCalc::Base
 
                                 when 'recapture', 'do'
                                     block = stack_pop
-                                    cmdn.times {iqueue_unshift(*block)} if check_this(Array, block, [block, cmd], cmda)
+                                    cmd_count.times {iqueue_unshift(*block)} if check_this(Array, block, [block, cmd], cmd_name)
                                     break
 
                                 when 'clear'
@@ -525,8 +544,8 @@ class TCalc::Base
                                 when 'any?'
                                     fun  = stack_pop
                                     seq  = stack_pop
-                                    check_this(Array, fun, [seq, fun, cmd], cmda)
-                                    check_this(Array, seq, [seq, fun, cmd], cmda)
+                                    check_this(Array, fun, [seq, fun, cmd], cmd_name)
+                                    check_this(Array, seq, [seq, fun, cmd], cmd_name)
                                     iseq = [false]
                                     while !seq.empty?
                                         iseq.unshift(*[seq.pop, fun, '(', true, ')', '('].flatten)
@@ -537,8 +556,8 @@ class TCalc::Base
                                 when 'all?'
                                     fun  = stack_pop
                                     seq  = stack_pop
-                                    check_this(Array, fun, [seq, fun, cmd], cmda)
-                                    check_this(Array, seq, [seq, fun, cmd], cmda)
+                                    check_this(Array, fun, [seq, fun, cmd], cmd_name)
+                                    check_this(Array, seq, [seq, fun, cmd], cmd_name)
                                     iseq = [true]
                                     seq.each do |elt|
                                         iseq.unshift(*[elt, fun, '(', ].flatten)
@@ -549,35 +568,35 @@ class TCalc::Base
                                 when 'array_push'
                                     val = stack_pop
                                     arr = stack_get(-1)
-                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    check_this(Array, arr, [arr, val, cmd], cmd_name)
                                     arr << val
 
                                 when 'array_pop'
                                     arr = stack_get(-1)
-                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    check_this(Array, arr, [arr, val, cmd], cmd_name)
                                     stack_push arr.pop
 
                                 when 'array_unshift'
                                     val = stack_pop
                                     arr = stack_get(-1)
-                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    check_this(Array, arr, [arr, val, cmd], cmd_name)
                                     arr.unshift(val)
 
                                 when 'array_shift'
                                     arr = stack_get(-1)
-                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    check_this(Array, arr, [arr, val, cmd], cmd_name)
                                     stack_push arr.shift
 
                                 when 'array_empty?'
                                     arr = stack_get(-1)
-                                    check_this(Array, arr, [arr, val, cmd], cmda)
+                                    check_this(Array, arr, [arr, val, cmd], cmd_name)
                                     stack_push arr.empty?
 
                                 when 'plot'
                                     xdim = stack_pop
                                     ydim = stack_pop
                                     vals = stack_pop
-                                    plot(ydim, xdim, vals, cmdx)
+                                    plot(ydim, xdim, vals, cmd_ext)
 
                                 when 'seq', 'Sequence'
                                     step = stack_pop
@@ -601,13 +620,13 @@ class TCalc::Base
                                 when 'Complex'
                                     imaginary = stack_pop
                                     real      = stack_pop
-                                    if check_this(Numeric, imaginary, [imaginary, real, cmd], cmda) and check_this(Numeric, real, [imaginary, real, cmd], cmda)
+                                    if check_this(Numeric, imaginary, [imaginary, real, cmd], cmd_name) and check_this(Numeric, real, [imaginary, real, cmd], cmd_name)
                                         stack_push Complex(real, imaginary)
                                     end
 
                                 when 'Matrix'
                                     mat = stack_get(-1)
-                                    if check_this(Array, mat, [mat, cmd], cmda)
+                                    if check_this(Array, mat, [mat, cmd], cmd_name)
                                         stack_push Matrix[ *stack_pop ]
                                     end
 
@@ -628,33 +647,29 @@ class TCalc::Base
                                     if cmdw
                                         item = get_word(cmdw)
                                     else
-                                        item = (stack).delete_at(-1 - cmdn)
+                                        item = (stack).delete_at(-1 - cmd_count)
                                     end
-                                    argn = item.method(cmdx).arity
+                                    argn = cmd_arrity || item.method(cmd_ext).arity
                                     args = get_args(1, argn)
-                                    val  = item.send(cmdx, *args)
+                                    val  = item.send(cmd_ext, *args)
                                     stack_push val
-                                end
-
-                            elsif words.has_key?(cmda)
-                                # p "DBG t2"
-                                # p "DBG word"
-                                if cmda =~ /^__.*?__$/
-                                    iqueue_unshift(get_word(cmda).dup)
-                                else
-                                    iqueue_unshift(*get_word(cmda))
                                 end
 
                             else
                                 # p "DBG t4"
+                                if RUBY_VERSION >= '1.9.0'
+                                    cmd_method = cmd_name.intern
+                                else
+                                    cmd_method = cmd_name
+                                end
                                 catch(:continue) do
                                     @numclasses.each do |c|
-                                        if c.instance_methods.include?(cmda)
+                                        if c.instance_methods.include?(cmd_method)
                                             # p "DBG #{c}"
-                                            argn = c.instance_method(cmda).arity
+                                            argn = cmd_arrity || c.instance_method(cmd_method).arity
                                             args = get_args(0, argn)
-                                            # p "DBG", cmda, argn, args
-                                            val = [args[0].send(cmda, *args[1 .. -1])].flatten
+                                            # p "DBG", cmd_method, argn, args
+                                            val = [args[0].send(cmd_method, *args[1 .. -1])].flatten
                                             # p "DBG", val
                                             (stack).concat(val)
                                             throw :continue
@@ -662,27 +677,29 @@ class TCalc::Base
                                     end
 
                                     [Math, *@numclasses].each do |c|
-                                        if c.constants.include?(cmda)
+                                        if c.constants.include?(cmd_method)
                                             # p "DBG #{c} constant"
-                                             stack_push c.const_get(cmda)
+                                             stack_push c.const_get(cmd_method)
                                              throw :continue
                                         end
                                     end
 
-                                    if Math.methods.include?(cmda)
-                                        # p "DBG t3", cmda
-                                        # p "DBG math"
-                                        argn = Math.method(cmda).arity
-                                        args = get_args(1, argn)
-                                        (stack).concat([Math.send(cmda, *args)].flatten)
-                                        throw :continue
+                                    [Math, *@numclasses].each do |c|
+                                        if c.methods.include?(cmd_method)
+                                            # p "DBG t3", cmd_method
+                                            # p "DBG math"
+                                            argn = cmd_arrity || c.method(cmd_method).arity
+                                            args = get_args(1, argn)
+                                            (stack).concat([c.send(cmd_method, *args)].flatten)
+                                            throw :continue
+                                        end
                                     end
 
-                                    completion = complete_command(cmda, cmdn, cmdx)
+                                    completion = complete_command(cmd_name, cmd_count, cmd_ext)
                                     if completion
                                         iqueue_unshift(completion)
                                     else
-                                        echo_error "Unknown or ambiguous command: #{cmda}"
+                                        echo_error "Unknown or ambiguous command: #{cmd_name}"
                                     end
 
                                 end
@@ -708,6 +725,7 @@ class TCalc::Base
                     else
                         echo_error e.to_s.inspect
                     end
+
                 end
             end
         end
@@ -866,6 +884,7 @@ class TCalc::Base
 
 
     def iqueue_empty?
+        # p "DBG", iqueue.class
         (iqueue).empty?
     end
 
@@ -885,6 +904,13 @@ class TCalc::Base
         else
             echo_error 'Scope error: end without begin'
         end
+    end
+
+
+    def help
+        help_file = File.join(File.dirname(__FILE__), '..', 'doc', 'tcalc.txt')
+        puts File.read(help_file)
+        false
     end
 
 
@@ -986,6 +1012,13 @@ class TCalc::Base
     end
 
 
+    def read_buffered_input(*args)
+        rv = read_input
+        @buffer = ''
+        return rv
+    end
+
+
     def read_input(prompt='> ')
         print prompt
         STDIN.gets
@@ -1028,8 +1061,14 @@ class TCalc::Base
             if level > 1
                 '[%s]' % elt.join(', ')
             else
-                elt
+                beg = 0
+                while elt[beg].nil? and beg < elt.size
+                    beg += 1
+                end
+                elt[beg..-1]
             end
+        when nil
+            nil
         else
             sprintf(@format, elt)
         end
@@ -1125,8 +1164,8 @@ class TCalc::Base
     end
 
 
-    def complete_command(cmda, cmdn, cmdx, return_many=false)
-        eligible = completion(cmda)
+    def complete_command(cmd_name, cmd_count, cmd_ext, return_many = false)
+        eligible = completion(cmd_name, return_many)
         if eligible.size == 1
             return eligible[0]
         elsif return_many
@@ -1137,27 +1176,42 @@ class TCalc::Base
     end
 
 
-    def completion(alt)
+    def completion(alt, return_many = false)
         alx = Regexp.new("^#{Regexp.escape(alt)}.*")
-        ids = @numclasses.map {|klass|klass.instance_methods | klass.constants}
+        ids = @numclasses.map {|klass| klass.instance_methods | klass.constants}
         ids += Numeric.constants | Numeric.instance_methods | Math.methods | Math.constants | words.keys | @cmds
         ids.flatten!
         ids.uniq!
-        ids.sort!
-        ids.delete_if {|e| e !~ alx}
+        ids = catch(:exit) do
+            if return_many
+                ids.map! {|a| a.to_s}
+            else
+                ids.map! do |a|
+                    as = a.to_s
+                    throw :exit, [as] if as == alt
+                    as
+                end
+            end
+            ids.sort! {|a,b| a <=> b}
+            ids.delete_if {|e| e !~ alx}
+            ids
+        end 
+        ids
     end
 end
 
 
 
 class TCalc::VIM < TCalc::Base
-    @tcalc = nil
+    # @tcalc = TCalc::VIM.new
+    @tcalc = self.new
 
     class << self
         def get_tcalc
-            unless @tcalc
-                @tcalc = self.new
-            end
+            # unless @tcalc
+            #     # @tcalc = self.new
+            #     @tcalc = TCalc::VIM.new
+            # end
             @tcalc
         end
 
@@ -1201,6 +1255,13 @@ class TCalc::VIM < TCalc::Base
     end
 
 
+    def help
+        VIM::command(%{help tcalc})
+        VIM::command(%{wincmd p})
+        true
+    end
+
+
     def display_stack
         dstack = format(stack).join("\n")
         # VIM::evaluate(%{s:DisplayStack(split(#{dstack.inspect}, '\n'))})
@@ -1225,7 +1286,7 @@ class TCalc::VIM < TCalc::Base
 
 
     def read_input(prompt='> ')
-        VIM::evaluate("input(#{prompt.inspect}, '', 'customlist,tcalc#Complete')")
+        VIM::evaluate("input(#{prompt.inspect}, #{@buffer.inspect}, 'customlist,tcalc#Complete')")
     end
 
 
@@ -1341,6 +1402,14 @@ class TCalc::Curses < TCalc::CommandLine
     end
 
 
+    def help
+        help_file = File.join(File.dirname(__FILE__), '..', 'doc', 'tcalc.txt')
+        help_text = File.readlines(help_file)
+        print_array(help_text, false, false, true)
+        press_enter
+        false
+    end
+
     def display_stack
         @curses.clear
         dstack = format(stack)
@@ -1348,7 +1417,7 @@ class TCalc::Curses < TCalc::CommandLine
     end
 
 
-    def print_array(arr, reversed=true, align=true)
+    def print_array(arr, reversed=true, align=true, topdown=false)
         @curses.clear
         y0   = curses_lines - 3
         x0   = 3 + @curses.cols / 3
@@ -1358,14 +1427,19 @@ class TCalc::Curses < TCalc::CommandLine
         xlim = @curses.cols - idxs
         xlin = xlim - x0
         arr.each_with_index do |e, i|
-            @curses.setpos(y0 - i, 0)
+            ii = i % y0
+            if i > 0 and ii == 0
+                press_enter
+            end
+            y1 = topdown ? ii : (y0 - ii)
+            @curses.setpos(y1, 0)
             @curses.addstr(idxf % i)
             if align
                 period = e.rindex(FLOAT_PERIOD) || e.size
-                @curses.setpos(y0 - i, x0 - period)
+                @curses.setpos(y1, x0 - period)
                 @curses.addstr(e[0..xlin])
             else
-                @curses.setpos(y0 - i, idxs + 2)
+                @curses.setpos(y1, idxs + 2)
                 @curses.addstr(e[0..xlim])
             end
         end
@@ -1375,7 +1449,7 @@ class TCalc::Curses < TCalc::CommandLine
     end
 
 
-    def read_input(prompt='> ', index=0, string='')
+    def read_input(prompt='> ', index=0, string=@buffer)
         # @curses.setpos(@curses::lines - 1, 0)
         # @curses.addstr('> ' + string)
         # @curses.getstr
@@ -1454,6 +1528,7 @@ class TCalc::Curses < TCalc::CommandLine
                 if m
                     c0 = m[0]
                     cc = complete_command(c0, nil, nil, true)
+                    # p "DBG", cc
                     case cc
                     when Array
                         print_array(cc.sort)
